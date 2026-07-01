@@ -67,7 +67,7 @@ Arranger {
     const prevRow = Math.floor(prevY / root.rowHeight);
     const currentRow = Math.floor((prevY + dy) / root.rowHeight);
     const deltaRows = currentRow - prevRow;
-    root.dragDeltaY += deltaRows * root.rowHeight;
+    root.dragState.dragDeltaY += deltaRows * root.rowHeight;
   }
 
   // Chord events have no bounds; never treat resize as loop resize.
@@ -115,9 +115,9 @@ Arranger {
       }
 
       arrangerSelectionModel: root.arrangerSelectionModel
-      dragDeltaPx: root.dragDeltaPx
-      dragDeltaY: root.dragDeltaY
-      dragMode: root.dragMode
+      dragDeltaPx: root.dragState.dragDeltaPx
+      dragDeltaY: root.dragState.dragDeltaY
+      dragMode: root.dragState.dragMode
       height: root.rowHeight
       model: chordObjectsRepeater.model
       pxPerTick: root.ruler.pxPerTick

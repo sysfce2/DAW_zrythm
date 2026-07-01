@@ -208,6 +208,7 @@ set(rel_qml_file_paths
   components/arranger/Arranger.qml
   components/arranger/AudioArranger.qml
   components/arranger/ArrangerObjectBaseView.qml
+  components/arranger/ArrangerDragState.qml
   components/arranger/ArrangerObjectLoader.qml
   components/arranger/ChordClipContent.qml
   components/arranger/ChordClipView.qml

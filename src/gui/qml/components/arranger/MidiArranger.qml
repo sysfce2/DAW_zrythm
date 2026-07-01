@@ -68,7 +68,7 @@ Arranger {
     const prevPitch = getPitchAtY(prevY);
     const currentPitch = getPitchAtY(prevY + dy);
     const delta = currentPitch - prevPitch;
-    root.dragDeltaY -= delta * midiEditor.keyHeight;
+    root.dragState.dragDeltaY -= delta * midiEditor.keyHeight;
   }
 
   editorSettings: midiEditor
@@ -87,9 +87,9 @@ Arranger {
       readonly property MidiNote midiNote: arrangerObject as MidiNote
 
       arrangerSelectionModel: root.arrangerSelectionModel
-      dragDeltaPx: root.dragDeltaPx
-      dragDeltaY: root.dragDeltaY
-      dragMode: root.dragMode
+      dragDeltaPx: root.dragState.dragDeltaPx
+      dragDeltaY: root.dragState.dragDeltaY
+      dragMode: root.dragState.dragMode
       height: root.midiEditor.keyHeight
       model: midiNotesRepeater.model
       pxPerTick: root.ruler.pxPerTick

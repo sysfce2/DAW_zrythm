@@ -66,10 +66,11 @@ Item {
   property int currentAction: Arranger.CurrentAction.None
   readonly property alias currentActionStartCoordinates: arrangerMouseArea.startCoordinates
   readonly property alias currentMousePosition: arrangerMouseArea.currentCoordinates
-  property real dragDeltaPx: 0
-  property real dragDeltaY: 0
-  // Drag visual feedback (driven by mouse handlers, read by ArrangerObjectLoader transforms).
-  property int dragMode: ArrangerObjectLoader.DragMode.None
+  // Shareable drag state. Defaults to a private instance; compositions that
+  // need cross-arranger linkage (e.g. MidiEditorPane) pass one instance to
+  // several arrangers. Read/write via root.dragState.dragMode etc.
+  property ArrangerDragState dragState: ArrangerDragState {
+  }
   required property EditorSettings editorSettings
   property bool enableYScroll: false
   property ArrangerObjectBaseView hoveredObject: null
@@ -652,7 +653,7 @@ Item {
             if (mouse.button === Qt.LeftButton) {
               if (root.hoveredObject !== null) {
                 action = Arranger.None;
-                root.dragMode = ArrangerObjectLoader.DragMode.None;
+                root.dragState.dragMode = ArrangerDragState.DragMode.None;
                 CursorManager.unsetCursor();
                 root.hoveredObject.objectDoubleClicked();
               } else {
@@ -700,8 +701,8 @@ Item {
                 }
 
                 // Activate visual drag transforms on selected delegates
-                root.dragMode = ArrangerObjectLoader.DragMode.Move;
-                root.dragDeltaY = 0;
+                root.dragState.dragMode = ArrangerDragState.DragMode.Move;
+                root.dragState.dragDeltaY = 0;
                 dragStartObjectY = root.getObjectY(root.getObjectAtCurrentIndex());
               } else if (action === Arranger.Moving && root.altHeld) {
                 action = Arranger.MovingLink;
@@ -726,7 +727,7 @@ Item {
                 }
               } else if ([Arranger.Moving, Arranger.MovingCopy, Arranger.MovingLink].includes(action)) {
                 const obj = root.getObjectAtCurrentIndex();
-                root.dragDeltaPx = calculateSnappedMovementTicks(ArrangerObjectHelper.timelineTicks(obj)) * root.ruler.pxPerTick;
+                root.dragState.dragDeltaPx = calculateSnappedMovementTicks(ArrangerObjectHelper.timelineTicks(obj)) * root.ruler.pxPerTick;
                 moveTemporaryObjectsY(dy, prevCoordinates.y);
               } else if (action == Arranger.CreatingMoving) {
                 const ticksToMove = calculateObjectMovementTicks();
@@ -753,15 +754,15 @@ Item {
                   root.selectionOperator.resizeObjects(resizeType, ArrangerObjectSelectionOperator.FromStart, delta);
                 } else {
                   // Bounds/LoopPoints: GPU transform on real delegates
-                  if (root.dragMode !== ArrangerObjectLoader.DragMode.ResizeFromStart) {
-                    root.dragMode = ArrangerObjectLoader.DragMode.ResizeFromStart;
+                  if (root.dragState.dragMode !== ArrangerDragState.DragMode.ResizeFromStart) {
+                    root.dragState.dragMode = ArrangerDragState.DragMode.ResizeFromStart;
                     const obj = root.getObjectAtCurrentIndex();
                     resizeOriginalTicks = ArrangerObjectHelper.timelineTicks(obj);
                   }
                   const snappedStartTicks = root.calculateSnappedPosition(currentTimelineTicks, startTimelineTicks);
                   const deltaTicks = snappedStartTicks - resizeOriginalTicks;
                   currentResizeDeltaTicks = deltaTicks;
-                  root.dragDeltaPx = deltaTicks * root.ruler.pxPerTick;
+                  root.dragState.dragDeltaPx = deltaTicks * root.ruler.pxPerTick;
                 }
               } else if ([Arranger.CreatingResizingMovingR, Arranger.CreatingResizingR, Arranger.ResizingR, Arranger.ResizingRLoop, Arranger.ResizingRFade].includes(action)) {
                 if (action === Arranger.CreatingResizingMovingR) {
@@ -794,14 +795,14 @@ Item {
                     root.selectionOperator.resizeObjects(resizeType, ArrangerObjectSelectionOperator.FromEnd, delta);
                   } else {
                     // Bounds/LoopPoints: GPU transform on real delegates
-                    if (root.dragMode !== ArrangerObjectLoader.DragMode.ResizeFromEnd) {
-                      root.dragMode = ArrangerObjectLoader.DragMode.ResizeFromEnd;
+                    if (root.dragState.dragMode !== ArrangerDragState.DragMode.ResizeFromEnd) {
+                      root.dragState.dragMode = ArrangerDragState.DragMode.ResizeFromEnd;
                       const obj = root.getObjectAtCurrentIndex();
                       resizeOriginalTicks = ArrangerObjectHelper.timelineEndTicks(obj);
                     }
                     const deltaTicks = endTicks - resizeOriginalTicks;
                     currentResizeDeltaTicks = deltaTicks;
-                    root.dragDeltaPx = deltaTicks * root.ruler.pxPerTick;
+                    root.dragState.dragDeltaPx = deltaTicks * root.ruler.pxPerTick;
                   }
                 }
               }
@@ -868,8 +869,8 @@ Item {
               // in handleObjectSelection, nothing more to do.
             } else if (action != Arranger.None && action != Arranger.StartingSelection) {
               if ([Arranger.Moving, Arranger.MovingCopy, Arranger.MovingLink].includes(action)) {
-                const finalTicksDiff = root.dragDeltaPx / root.ruler.pxPerTick;
-                const finalYDiff = root.dragDeltaY;
+                const finalTicksDiff = root.dragState.dragDeltaPx / root.ruler.pxPerTick;
+                const finalYDiff = root.dragState.dragDeltaY;
                 const hasHorizontalMove = Math.abs(finalTicksDiff) > 0.001;
                 if (action === Arranger.MovingCopy) {
                   root.undoStack.beginMacro(qsTr("Copy Objects"));
@@ -912,9 +913,7 @@ Item {
               }
             }
             action = Arranger.None;
-            root.dragMode = ArrangerObjectLoader.DragMode.None;
-            root.dragDeltaPx = 0;
-            root.dragDeltaY = 0;
+            root.dragState.reset();
             root.wasClickedObjectSelectedOnPress = false;
             root.clickedUnifiedIndexOnPress = null;
             root.updateCursor();

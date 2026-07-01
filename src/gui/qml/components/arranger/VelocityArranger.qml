@@ -60,9 +60,9 @@ Arranger {
       readonly property MidiNote midiNote: arrangerObject as MidiNote
 
       arrangerSelectionModel: root.arrangerSelectionModel
-      dragDeltaPx: root.dragDeltaPx
-      dragDeltaY: root.dragDeltaY
-      dragMode: root.dragMode
+      dragDeltaPx: root.dragState.dragDeltaPx
+      dragDeltaY: root.dragState.dragDeltaY
+      dragMode: root.dragState.dragMode
       height: root.maxVelocityHeight
       model: midiNotesRepeater.model
       pxPerTick: root.ruler.pxPerTick

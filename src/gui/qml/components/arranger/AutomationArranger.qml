@@ -63,7 +63,7 @@ Arranger {
   }
 
   function moveTemporaryObjectsY(dy: real, prevY: real) {
-    root.dragDeltaY += dy;
+    root.dragState.dragDeltaY += dy;
   }
 
   editorSettings: automationEditor
@@ -82,9 +82,9 @@ Arranger {
       readonly property AutomationPoint automationPoint: arrangerObject as AutomationPoint
 
       arrangerSelectionModel: root.arrangerSelectionModel
-      dragDeltaPx: root.dragDeltaPx
-      dragDeltaY: root.dragDeltaY
-      dragMode: root.dragMode
+      dragDeltaPx: root.dragState.dragDeltaPx
+      dragDeltaY: root.dragState.dragDeltaY
+      dragMode: root.dragState.dragMode
       height: 2 * ZrythmTheme.buttonPadding
       model: automationPointsRepeater.model
       pxPerTick: root.ruler.pxPerTick
