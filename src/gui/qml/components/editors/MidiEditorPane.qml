@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 import QtQuick
@@ -166,6 +166,12 @@ GridLayout {
     id: unifiedObjectsModel
   }
 
+  // Shared between MidiArranger and VelocityArranger so velocity bars react
+  // to note drags (and vice versa) in real time.
+  ArrangerDragState {
+    id: editorDragState
+  }
+
   ItemSelectionModel {
     id: arrangerSelectionModel
 
@@ -195,6 +201,7 @@ GridLayout {
     arrangerContentHeight: pianoRollKeys.height
     arrangerSelectionModel: arrangerSelectionModel
     clipEditor: root.clipEditor
+    dragState: editorDragState
     midiEditor: root.midiEditor
     objectCreator: root.session.arrangerObjectCreator
     ruler: ruler
@@ -220,6 +227,7 @@ GridLayout {
     Layout.fillWidth: true
     arrangerSelectionModel: arrangerSelectionModel
     clipEditor: root.clipEditor
+    dragState: editorDragState
     midiEditor: root.midiEditor
     objectCreator: root.session.arrangerObjectCreator
     ruler: ruler

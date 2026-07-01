@@ -60,9 +60,6 @@ Arranger {
       readonly property MidiNote midiNote: arrangerObject as MidiNote
 
       arrangerSelectionModel: root.arrangerSelectionModel
-      dragDeltaPx: root.dragState.dragDeltaPx
-      dragDeltaY: root.dragState.dragDeltaY
-      dragMode: root.dragState.dragMode
       height: root.maxVelocityHeight
       model: midiNotesRepeater.model
       pxPerTick: root.ruler.pxPerTick
@@ -77,6 +74,12 @@ Arranger {
           id: velocityColumn
 
           anchors.fill: velocityLoader
+
+          // Follow the note's left-edge X during moves and left-edge resizes
+          // (the note's start moves in both).
+          transform: Translate {
+            x: (velocityLoader.selectionTracker.isSelected && (root.dragState.dragMode === ArrangerDragState.DragMode.Move || root.dragState.dragMode === ArrangerDragState.DragMode.ResizeFromStart)) ? root.dragState.dragDeltaPx : 0
+          }
 
           // Visual velocity bar at bottom
           VelocityBarView {
