@@ -14,8 +14,8 @@ Arranger {
 
   property ChordTrack chordTrack: null
   property int highlightMode: 0
-  required property MidiEditor midiEditor
   readonly property MidiClip midiClip: clipEditor.clipObject as MidiClip
+  required property MidiEditor midiEditor
   readonly property Track track: clipEditor.track
 
   function beginObjectCreation(coordinates: point): MidiNote {
@@ -68,9 +68,7 @@ Arranger {
     const prevPitch = getPitchAtY(prevY);
     const currentPitch = getPitchAtY(prevY + dy);
     const delta = currentPitch - prevPitch;
-    root.tempQmlArrangerObjects.forEach(qmlObj => {
-      qmlObj.y -= delta * midiEditor.keyHeight;
-    });
+    root.dragDeltaY -= delta * midiEditor.keyHeight;
   }
 
   editorSettings: midiEditor
@@ -89,6 +87,9 @@ Arranger {
       readonly property MidiNote midiNote: arrangerObject as MidiNote
 
       arrangerSelectionModel: root.arrangerSelectionModel
+      dragDeltaPx: root.dragDeltaPx
+      dragDeltaY: root.dragDeltaY
+      dragMode: root.dragMode
       height: root.midiEditor.keyHeight
       model: midiNotesRepeater.model
       pxPerTick: root.ruler.pxPerTick
@@ -101,9 +102,9 @@ Arranger {
         MidiNoteView {
           id: midiNoteView
 
+          arrangerObject: midiNoteLoader.arrangerObject
           chordTrack: root.chordTrack
           highlightMode: root.highlightMode
-          arrangerObject: midiNoteLoader.arrangerObject
           isSelected: midiNoteLoader.selectionTracker.isSelected
           track: root.track
           undoStack: root.undoStack

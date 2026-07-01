@@ -445,6 +445,9 @@ Arranger {
               arrangerSelectionModel: root.arrangerSelectionModel
               model: scalesRepeater.model
               pxPerTick: root.ruler.pxPerTick
+              dragMode: root.dragMode
+              dragDeltaPx: root.dragDeltaPx
+              dragDeltaY: root.dragDeltaY
               scrollViewWidth: root.scrollViewWidth
               scrollX: root.scrollX
               unifiedObjectsModel: root.unifiedObjectsModel
@@ -492,6 +495,9 @@ Arranger {
               arrangerSelectionModel: root.arrangerSelectionModel
               model: markersRepeater.model
               pxPerTick: root.ruler.pxPerTick
+              dragMode: root.dragMode
+              dragDeltaPx: root.dragDeltaPx
+              dragDeltaY: root.dragDeltaY
               scrollViewWidth: root.scrollViewWidth
               scrollX: root.scrollX
               unifiedObjectsModel: root.unifiedObjectsModel
@@ -539,6 +545,9 @@ Arranger {
               arrangerSelectionModel: root.arrangerSelectionModel
               model: chordClipsRepeater.model
               pxPerTick: root.ruler.pxPerTick
+              dragMode: root.dragMode
+              dragDeltaPx: root.dragDeltaPx
+              dragDeltaY: root.dragDeltaY
               scrollViewWidth: root.scrollViewWidth
               scrollX: root.scrollX
               unifiedObjectsModel: root.unifiedObjectsModel
@@ -592,6 +601,9 @@ Arranger {
                 height: mainTrackLanedClipsLoader.height
                 model: mainTrackLaneClipsRepeater.model
                 pxPerTick: root.ruler.pxPerTick
+                dragMode: root.dragMode
+                dragDeltaPx: root.dragDeltaPx
+                dragDeltaY: root.dragDeltaY
                 scrollViewWidth: root.scrollViewWidth
                 scrollX: root.scrollX
                 sourceComponent: mainTrackClipLoader.arrangerObject.type === ArrangerObject.MidiClip ? midiClipComponent : audioClipComponent
@@ -733,6 +745,9 @@ Arranger {
                 height: automationTrackItem.height
                 model: automationClipsRepeater.model
                 pxPerTick: root.ruler.pxPerTick
+                dragMode: root.dragMode
+                dragDeltaPx: root.dragDeltaPx
+                dragDeltaY: root.dragDeltaY
                 scrollViewWidth: root.scrollViewWidth
                 scrollX: root.scrollX
                 unifiedObjectsModel: root.unifiedObjectsModel
@@ -809,6 +824,9 @@ Arranger {
         height: laneItem.trackLane.height
         model: arrangerObject.type === ArrangerObject.MidiClip ? laneItem.trackLane.midiClips : laneItem.trackLane.audioClips
         pxPerTick: root.ruler.pxPerTick
+        dragMode: root.dragMode
+        dragDeltaPx: root.dragDeltaPx
+        dragDeltaY: root.dragDeltaY
         scrollViewWidth: root.scrollViewWidth
         scrollX: root.scrollX
         sourceComponent: laneClipLoader.arrangerObject.type === ArrangerObject.MidiClip ? laneMidiClipComponent : laneAudioClipComponent

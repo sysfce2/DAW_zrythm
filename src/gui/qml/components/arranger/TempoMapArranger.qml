@@ -72,6 +72,9 @@ Arranger {
         readonly property TempoObject tempoObject: arrangerObject as TempoObject
 
         arrangerSelectionModel: root.arrangerSelectionModel
+        dragDeltaPx: root.dragDeltaPx
+        dragDeltaY: root.dragDeltaY
+        dragMode: root.dragMode
         height: root.laneHeight
         model: tempoObjectsRepeater.model
         pxPerTick: root.ruler.pxPerTick
@@ -111,6 +114,9 @@ Arranger {
         readonly property TimeSignatureObject timeSignatureObject: arrangerObject as TimeSignatureObject
 
         arrangerSelectionModel: root.arrangerSelectionModel
+        dragDeltaPx: root.dragDeltaPx
+        dragDeltaY: root.dragDeltaY
+        dragMode: root.dragMode
         height: root.laneHeight
         model: timeSignatureObjectsRepeater.model
         pxPerTick: root.ruler.pxPerTick

@@ -66,6 +66,10 @@ Item {
   property int currentAction: Arranger.CurrentAction.None
   readonly property alias currentActionStartCoordinates: arrangerMouseArea.startCoordinates
   readonly property alias currentMousePosition: arrangerMouseArea.currentCoordinates
+  property real dragDeltaPx: 0
+  property real dragDeltaY: 0
+  // Drag visual feedback (driven by mouse handlers, read by ArrangerObjectLoader transforms).
+  property int dragMode: ArrangerObjectLoader.DragMode.None
   required property EditorSettings editorSettings
   property bool enableYScroll: false
   property ArrangerObjectBaseView hoveredObject: null
@@ -82,7 +86,6 @@ Item {
   property bool shiftHeld
   readonly property bool shouldSnap: !root.shiftHeld && (root.snapGrid.snapToGrid || root.snapGrid.snapToEvents)
   required property SnapGrid snapGrid
-  property var tempQmlArrangerObjects: []
   required property TempoMap tempoMap
   required property ArrangerTool tool
   required property Transport transport
@@ -98,17 +101,6 @@ Item {
 
   function calculateSnappedPosition(currentTicks: real, startTicks: real): real {
     return root.shouldSnap ? root.snapGrid.snapWithStartTicks(currentTicks, startTicks) : currentTicks;
-  }
-
-  function clearTempQmlArrangerObjects() {
-    // Destroy existing temporary views before clearing the array
-    for (let i = 0; i < root.tempQmlArrangerObjects.length; i++) {
-      const tempView = root.tempQmlArrangerObjects[i];
-      tempView.destroy();
-    }
-
-    // Clear the current array
-    root.tempQmlArrangerObjects = [];
   }
 
   function findArrangerObjectLoadersInRectRecursive(item: Item, rect: rect, recursive: bool): var {
@@ -348,48 +340,6 @@ Item {
     CursorManager.setPointerCursor();
   }
 
-  function updateTempQmlArrangerObjects() {
-    clearTempQmlArrangerObjects();
-
-    // Get all selected indexes from the selection model
-    const selectedIndexes = root.arrangerSelectionModel.selectedIndexes;
-
-    // Add each selected object to the array
-    for (let i = 0; i < selectedIndexes.length; i++) {
-      const unifiedIndex = selectedIndexes[i];
-      // Map back to source model to get the actual object
-      const sourceIndex = root.unifiedObjectsModel.mapToSource(unifiedIndex);
-      // Get the source model
-      const sourceModel = sourceIndex.model;
-      if (sourceModel) {
-        // Get the object from the source model using the arrangerObject role
-        const object = sourceModel.data(sourceIndex, ArrangerObjectListModel.ArrangerObjectPtrRole) as ArrangerObject;
-        const objectTimelineTicks = ArrangerObjectHelper.timelineTicks(object);
-        const objectTimelineEndTicks = ArrangerObjectHelper.timelineEndTicks(object);
-        if (object) {
-          // Create a temporary view that wraps the arranger object
-          const tempView = tempViewComponent.createObject(arrangerContent, {
-            "arrangerObject": object,
-            "x": objectTimelineTicks * root.ruler.pxPerTick,
-            "width": Math.max((objectTimelineEndTicks - objectTimelineTicks) * root.ruler.pxPerTick, 20),
-            "originalWidth": Math.max((objectTimelineEndTicks - objectTimelineTicks) * root.ruler.pxPerTick, 20),
-            "y": root.getObjectY(object),
-            "coordinatesOnConstruction": Qt.point(objectTimelineTicks * root.ruler.pxPerTick, root.getObjectY(object)),
-            "height": root.getObjectHeight(object),
-            "z": 100
-          });
-
-          if (tempView) {
-            root.tempQmlArrangerObjects.push(tempView);
-          }
-        }
-      }
-    }
-
-    console.log("Updated temporary QML arranger objects with", root.tempQmlArrangerObjects.length, "objects");
-    // console.log(tempQmlArrangerObjects);
-  }
-
   implicitHeight: 100
   implicitWidth: 64
 
@@ -404,13 +354,6 @@ Item {
 
     enabled: root.hoveredObject !== null
     target: root.hoveredObject
-  }
-
-  Component {
-    id: tempViewComponent
-
-    ArrangerObjectTemporaryView {
-    }
   }
 
   // Arranger background
@@ -648,6 +591,9 @@ Item {
           // committed directly on release (no pixel round-trip).
           property real currentResizeDeltaTicks: 0
           readonly property real currentTimelineTicks: currentCoordinates.x / root.ruler.pxPerTick
+          // Dragged object's original Y at move-drag start, used by the release
+          // handler to compute the final vertical delta.
+          property real dragStartObjectY: 0
           property bool hovered: false
 
           // Dragged object's original edge position (in ticks), captured once at
@@ -689,35 +635,6 @@ Item {
             }
           }
 
-          function moveTemporaryObjectsX() {
-            const obj = root.getObjectAtCurrentIndex();
-            const xToMoveSinceStart = calculateSnappedMovementTicks(ArrangerObjectHelper.timelineTicks(obj)) * root.ruler.pxPerTick;
-            root.tempQmlArrangerObjects.forEach(qmlObj => {
-              qmlObj.x = qmlObj.coordinatesOnConstruction.x + xToMoveSinceStart;
-            });
-          }
-
-          function resizeTemporaryObjectsFromEnd() {
-            const snappedEndTicks = root.calculateSnappedPosition(currentTimelineTicks, startTimelineTicks);
-            const deltaTicks = snappedEndTicks - resizeOriginalTicks;
-            currentResizeDeltaTicks = deltaTicks;
-            const deltaPx = deltaTicks * root.ruler.pxPerTick;
-            root.tempQmlArrangerObjects.forEach(qmlObj => {
-              qmlObj.width = Math.max(qmlObj.originalWidth + deltaPx, root.ruler.pxPerTick);
-            });
-          }
-
-          function resizeTemporaryObjectsFromStart() {
-            const snappedStartTicks = root.calculateSnappedPosition(currentTimelineTicks, startTimelineTicks);
-            const deltaTicks = snappedStartTicks - resizeOriginalTicks;
-            currentResizeDeltaTicks = deltaTicks;
-            const deltaPx = deltaTicks * root.ruler.pxPerTick;
-            root.tempQmlArrangerObjects.forEach(qmlObj => {
-              qmlObj.x = qmlObj.coordinatesOnConstruction.x + deltaPx;
-              qmlObj.width = Math.max(qmlObj.originalWidth - deltaPx, root.ruler.pxPerTick);
-            });
-          }
-
           // Snaps the selected objects' positions (if snap is on).
           function snapNewlyCreatedObjects() {
             const ticksToMove = calculateObjectMovementTicks();
@@ -735,7 +652,7 @@ Item {
             if (mouse.button === Qt.LeftButton) {
               if (root.hoveredObject !== null) {
                 action = Arranger.None;
-                root.clearTempQmlArrangerObjects();
+                root.dragMode = ArrangerObjectLoader.DragMode.None;
                 CursorManager.unsetCursor();
                 root.hoveredObject.objectDoubleClicked();
               } else {
@@ -782,8 +699,10 @@ Item {
                   action = Arranger.Moving;
                 }
 
-                // Update qmlObjectsBeingMoved based on current selection
-                root.updateTempQmlArrangerObjects();
+                // Activate visual drag transforms on selected delegates
+                root.dragMode = ArrangerObjectLoader.DragMode.Move;
+                root.dragDeltaY = 0;
+                dragStartObjectY = root.getObjectY(root.getObjectAtCurrentIndex());
               } else if (action === Arranger.Moving && root.altHeld) {
                 action = Arranger.MovingLink;
               } else if (action === Arranger.Moving && root.ctrlHeld) {
@@ -806,7 +725,8 @@ Item {
                   root.editorSettings.y -= dy;
                 }
               } else if ([Arranger.Moving, Arranger.MovingCopy, Arranger.MovingLink].includes(action)) {
-                moveTemporaryObjectsX();
+                const obj = root.getObjectAtCurrentIndex();
+                root.dragDeltaPx = calculateSnappedMovementTicks(ArrangerObjectHelper.timelineTicks(obj)) * root.ruler.pxPerTick;
                 moveTemporaryObjectsY(dy, prevCoordinates.y);
               } else if (action == Arranger.CreatingMoving) {
                 const ticksToMove = calculateObjectMovementTicks();
@@ -832,14 +752,16 @@ Item {
                   }
                   root.selectionOperator.resizeObjects(resizeType, ArrangerObjectSelectionOperator.FromStart, delta);
                 } else {
-                  // Bounds/LoopPoints use the temp-view pattern so the whole drag
-                  // commits as a single undo command on release.
-                  if (root.tempQmlArrangerObjects.length === 0) {
-                    root.updateTempQmlArrangerObjects();
+                  // Bounds/LoopPoints: GPU transform on real delegates
+                  if (root.dragMode !== ArrangerObjectLoader.DragMode.ResizeFromStart) {
+                    root.dragMode = ArrangerObjectLoader.DragMode.ResizeFromStart;
                     const obj = root.getObjectAtCurrentIndex();
                     resizeOriginalTicks = ArrangerObjectHelper.timelineTicks(obj);
                   }
-                  resizeTemporaryObjectsFromStart();
+                  const snappedStartTicks = root.calculateSnappedPosition(currentTimelineTicks, startTimelineTicks);
+                  const deltaTicks = snappedStartTicks - resizeOriginalTicks;
+                  currentResizeDeltaTicks = deltaTicks;
+                  root.dragDeltaPx = deltaTicks * root.ruler.pxPerTick;
                 }
               } else if ([Arranger.CreatingResizingMovingR, Arranger.CreatingResizingR, Arranger.ResizingR, Arranger.ResizingRLoop, Arranger.ResizingRFade].includes(action)) {
                 if (action === Arranger.CreatingResizingMovingR) {
@@ -871,14 +793,15 @@ Item {
                     }
                     root.selectionOperator.resizeObjects(resizeType, ArrangerObjectSelectionOperator.FromEnd, delta);
                   } else {
-                    // Bounds/LoopPoints use the temp-view pattern so the whole drag
-                    // commits as a single undo command on release.
-                    if (root.tempQmlArrangerObjects.length === 0) {
-                      root.updateTempQmlArrangerObjects();
+                    // Bounds/LoopPoints: GPU transform on real delegates
+                    if (root.dragMode !== ArrangerObjectLoader.DragMode.ResizeFromEnd) {
+                      root.dragMode = ArrangerObjectLoader.DragMode.ResizeFromEnd;
                       const obj = root.getObjectAtCurrentIndex();
                       resizeOriginalTicks = ArrangerObjectHelper.timelineEndTicks(obj);
                     }
-                    resizeTemporaryObjectsFromEnd();
+                    const deltaTicks = endTicks - resizeOriginalTicks;
+                    currentResizeDeltaTicks = deltaTicks;
+                    root.dragDeltaPx = deltaTicks * root.ruler.pxPerTick;
                   }
                 }
               }
@@ -945,46 +868,40 @@ Item {
               // in handleObjectSelection, nothing more to do.
             } else if (action != Arranger.None && action != Arranger.StartingSelection) {
               if ([Arranger.Moving, Arranger.MovingCopy, Arranger.MovingLink].includes(action)) {
-                if (root.tempQmlArrangerObjects.length > 0) {
-                  const firstTempObj = root.tempQmlArrangerObjects[0];
-                  // Calculate the final snapped position difference
-                  const finalTicksDiff = (firstTempObj.x - firstTempObj.coordinatesOnConstruction.x) / root.ruler.pxPerTick;
-                  const finalYDiff = firstTempObj.y - firstTempObj.coordinatesOnConstruction.y;
-                  const hasHorizontalMove = Math.abs(finalTicksDiff) > 0.001;
-                  if (action === Arranger.MovingCopy) {
-                    root.undoStack.beginMacro(qsTr("Copy Objects"));
-                    // This creates new object clones at the original positions, and the following move operations move the original objects
-                    root.selectionOperator.cloneObjects();
-                  } else if (action === Arranger.MovingLink) {
-                    // TODO: Link operation is not yet implemented on the C++ side
-                    // (ArrangerObjectSelectionOperator has no linkObjects() method).
-                    // For now this performs a plain move. Replace with a proper link
-                    // operation once the C++ API is available.
-                    root.undoStack.beginMacro(qsTr("Move Objects"));
-                  } else if (hasHorizontalMove) {
-                    root.undoStack.beginMacro(qsTr("Move Objects"));
-                  }
-                  if (hasHorizontalMove || action === Arranger.MovingCopy || action === Arranger.MovingLink)
-                    moveSelectionsX(finalTicksDiff);
-                  moveSelectionsY(finalYDiff, firstTempObj.coordinatesOnConstruction.y);
-                  if (hasHorizontalMove || action === Arranger.MovingCopy || action === Arranger.MovingLink)
-                    root.undoStack.endMacro();
+                const finalTicksDiff = root.dragDeltaPx / root.ruler.pxPerTick;
+                const finalYDiff = root.dragDeltaY;
+                const hasHorizontalMove = Math.abs(finalTicksDiff) > 0.001;
+                if (action === Arranger.MovingCopy) {
+                  root.undoStack.beginMacro(qsTr("Copy Objects"));
+                  // This creates new object clones at the original positions, and the following move operations move the original objects
+                  root.selectionOperator.cloneObjects();
+                } else if (action === Arranger.MovingLink) {
+                  // TODO: Link operation is not yet implemented on the C++ side
+                  // (ArrangerObjectSelectionOperator has no linkObjects() method).
+                  // For now this performs a plain move. Replace with a proper link
+                  // operation once the C++ API is available.
+                  root.undoStack.beginMacro(qsTr("Move Objects"));
+                } else if (hasHorizontalMove) {
+                  root.undoStack.beginMacro(qsTr("Move Objects"));
                 }
+                if (hasHorizontalMove || action === Arranger.MovingCopy || action === Arranger.MovingLink)
+                  moveSelectionsX(finalTicksDiff);
+                moveSelectionsY(finalYDiff, dragStartObjectY);
+                if (hasHorizontalMove || action === Arranger.MovingCopy || action === Arranger.MovingLink)
+                  root.undoStack.endMacro();
               } else if (action === Arranger.CreatingMoving) {
                 root.undoStack.endMacro();
               } else if ([Arranger.ResizingL, Arranger.ResizingLLoop, Arranger.ResizingR, Arranger.ResizingRLoop].includes(action)) {
-                if (root.tempQmlArrangerObjects.length > 0) {
-                  let resizeType = ArrangerObjectSelectionOperator.Bounds;
-                  let direction = ArrangerObjectSelectionOperator.FromEnd;
+                let resizeType = ArrangerObjectSelectionOperator.Bounds;
+                let direction = ArrangerObjectSelectionOperator.FromEnd;
 
-                  if ([Arranger.ResizingL, Arranger.ResizingLLoop].includes(action))
-                    direction = ArrangerObjectSelectionOperator.FromStart;
-                  if (action === Arranger.ResizingLLoop || action === Arranger.ResizingRLoop)
-                    resizeType = ArrangerObjectSelectionOperator.LoopPoints;
+                if ([Arranger.ResizingL, Arranger.ResizingLLoop].includes(action))
+                  direction = ArrangerObjectSelectionOperator.FromStart;
+                if (action === Arranger.ResizingLLoop || action === Arranger.ResizingRLoop)
+                  resizeType = ArrangerObjectSelectionOperator.LoopPoints;
 
-                  if (Math.abs(currentResizeDeltaTicks) > 0.001)
-                    root.selectionOperator.resizeObjects(resizeType, direction, currentResizeDeltaTicks);
-                }
+                if (Math.abs(currentResizeDeltaTicks) > 0.001)
+                  root.selectionOperator.resizeObjects(resizeType, direction, currentResizeDeltaTicks);
                 // Fades resize: already handled by direct manipulation
               }
               console.log("released after action");
@@ -995,7 +912,9 @@ Item {
               }
             }
             action = Arranger.None;
-            root.clearTempQmlArrangerObjects();
+            root.dragMode = ArrangerObjectLoader.DragMode.None;
+            root.dragDeltaPx = 0;
+            root.dragDeltaY = 0;
             root.wasClickedObjectSelectedOnPress = false;
             root.clickedUnifiedIndexOnPress = null;
             root.updateCursor();

@@ -42,9 +42,6 @@ Arranger {
   }
 
   function moveTemporaryObjectsY(dy: real, prevY: real) {
-    root.tempQmlArrangerObjects.forEach(qmlObj => {
-      qmlObj.height = qmlObj.heightOnConstruction - dy;
-    });
   }
 
   editorSettings: midiEditor
@@ -63,6 +60,9 @@ Arranger {
       readonly property MidiNote midiNote: arrangerObject as MidiNote
 
       arrangerSelectionModel: root.arrangerSelectionModel
+      dragDeltaPx: root.dragDeltaPx
+      dragDeltaY: root.dragDeltaY
+      dragMode: root.dragMode
       height: root.maxVelocityHeight
       model: midiNotesRepeater.model
       pxPerTick: root.ruler.pxPerTick

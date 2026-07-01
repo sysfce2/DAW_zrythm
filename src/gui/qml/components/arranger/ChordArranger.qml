@@ -67,9 +67,7 @@ Arranger {
     const prevRow = Math.floor(prevY / root.rowHeight);
     const currentRow = Math.floor((prevY + dy) / root.rowHeight);
     const deltaRows = currentRow - prevRow;
-    root.tempQmlArrangerObjects.forEach(qmlObj => {
-      qmlObj.y += deltaRows * root.rowHeight;
-    });
+    root.dragDeltaY += deltaRows * root.rowHeight;
   }
 
   // Chord events have no bounds; never treat resize as loop resize.
@@ -117,6 +115,9 @@ Arranger {
       }
 
       arrangerSelectionModel: root.arrangerSelectionModel
+      dragDeltaPx: root.dragDeltaPx
+      dragDeltaY: root.dragDeltaY
+      dragMode: root.dragMode
       height: root.rowHeight
       model: chordObjectsRepeater.model
       pxPerTick: root.ruler.pxPerTick

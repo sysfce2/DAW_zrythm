@@ -12,13 +12,13 @@ import ZrythmStyle
 Arranger {
   id: root
 
+  readonly property AudioClip audioClip: clipEditor.clipObject as AudioClip
   required property AudioClipEditor audioEditor
+  readonly property real clipWidth: root.audioClip ? root.audioClip.timelineLengthTicks * root.ruler.pxPerTick : 0
+  readonly property real clipX: root.audioClip ? root.audioClip.position.ticks * root.ruler.pxPerTick : 0
   readonly property real fadeInPx: root.audioClip && root.audioClip.fadeRange ? root.audioClip.fadeRange.startOffset.ticks * root.ruler.pxPerTick : 0
   readonly property real fadeOutPx: root.audioClip && root.audioClip.fadeRange ? root.audioClip.fadeRange.endOffset.ticks * root.ruler.pxPerTick : 0
   property QObjectPropertyOperator fadePropertyOperator: null
-  readonly property AudioClip audioClip: clipEditor.clipObject as AudioClip
-  readonly property real clipWidth: root.audioClip ? root.audioClip.timelineLengthTicks * root.ruler.pxPerTick : 0
-  readonly property real clipX: root.audioClip ? root.audioClip.position.ticks * root.ruler.pxPerTick : 0
   readonly property Track track: clipEditor.track
 
   function beginObjectCreation(coordinates: point): var {
@@ -54,12 +54,12 @@ Arranger {
     AudioClipWaveformCanvas {
       id: waveformCanvas
 
+      audioClip: root.audioClip
       height: contentItem.height
       outlineColor: {
         const lighter = Qt.lighter(root.track.color, 1.4);
         return Qt.rgba(lighter.r, lighter.g, lighter.b, 200 / 255);
       }
-      audioClip: root.audioClip
       waveformColor: Qt.rgba(root.track.color.r, root.track.color.g, root.track.color.b, 80 / 255)
       width: root.clipWidth
       x: root.clipX
@@ -130,13 +130,13 @@ Arranger {
     width: Math.max(fadePx, 20)
 
     FadeOverlayCanvas {
+      audioClip: root.audioClip
       curveColor: contentItem.fadeCurveColor
       fadeType: fadeOverlayControl.fadeType
       height: parent.height
       hovered: curvinessMouseArea.containsMouse || curvinessMouseArea.pressed || offsetMouseArea.containsMouse || offsetMouseArea.pressed
       overlayColor: contentItem.fadeOverlayColor
       pxPerTick: root.ruler.pxPerTick
-      audioClip: root.audioClip
       visible: fadeOverlayControl.fadePx > 0
       width: fadeOverlayControl.fadePx
       x: 0
