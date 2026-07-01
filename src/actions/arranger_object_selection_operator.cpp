@@ -105,27 +105,37 @@ ArrangerObjectSelectionOperator::changeVelocities (int velocity_delta)
       return false;
     }
 
-  // Validate velocity changes
-  const auto all_valid = std::ranges::all_of (
-    selected_objects, [velocity_delta] (const auto &obj_ref) {
+  // Clamp the delta so every selected note stays within [0, 127].
+  int  min_velocity = 127;
+  int  max_velocity = 0;
+  bool found_note = false;
+  for (const auto &obj_ref : selected_objects)
+    {
       auto * note =
         obj_ref.template get_object_as<structure::arrangement::MidiNote> ();
       if (note == nullptr)
-        return false;
-      const auto new_velocity = note->velocity () + velocity_delta;
-      return new_velocity >= 0 && new_velocity <= 127;
-    });
-
-  if (!all_valid)
+        continue;
+      found_note = true;
+      min_velocity = std::min (min_velocity, note->velocity ());
+      max_velocity = std::max (max_velocity, note->velocity ());
+    }
+  if (!found_note)
     {
-      z_warning ("Velocity change validation failed");
+      z_debug ("No MIDI notes selected for velocity change");
       return false;
+    }
+
+  const int clamped_delta =
+    std::clamp (velocity_delta, -min_velocity, 127 - max_velocity);
+  if (clamped_delta == 0)
+    {
+      return true;
     }
 
   // Create and push command
   auto * command = new commands::MoveArrangerObjectsCommand (
     std::move (selected_objects), units::ticks (0),
-    static_cast<double> (velocity_delta),
+    static_cast<double> (clamped_delta),
     commands::MoveArrangerObjectsCommand::VerticalChangeType::Velocity);
   undo_stack_.push (command);
 

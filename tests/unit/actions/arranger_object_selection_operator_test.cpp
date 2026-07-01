@@ -1782,34 +1782,6 @@ TEST_F (ArrangerObjectSelectionOperatorTest, ChangeVelocitiesZeroDelta)
 }
 
 // Test changeVelocities with invalid velocity (out of range)
-TEST_F (ArrangerObjectSelectionOperatorTest, ChangeVelocitiesInvalidVelocity)
-{
-  // Select note for testing
-  selection_model_->select (
-    list_model_.index (1, 0), QItemSelectionModel::Select);
-
-  // Find MIDI note and set its velocity to 120 (close to max)
-  auto * note_obj = note_ref.get_object_as<structure::arrangement::MidiNote> ();
-  ASSERT_NE (note_obj, nullptr);
-  note_obj->setVelocity (120);
-
-  // Try to change by 20 (would result in velocity 140, which is out of range)
-  bool result = operator_->changeVelocities (20);
-  EXPECT_FALSE (result);
-
-  // Velocity should remain unchanged
-  EXPECT_EQ (note_obj->velocity (), 120);
-
-  // Try negative delta that would go below 0
-  note_obj->setVelocity (5);
-
-  result = operator_->changeVelocities (-10);
-  EXPECT_FALSE (result);
-
-  // Velocity should remain unchanged
-  EXPECT_EQ (note_obj->velocity (), 5);
-}
-
 // Test toggleMute mutes unmuted objects
 TEST_F (ArrangerObjectSelectionOperatorTest, ToggleMuteMutesUnmutedObjects)
 {
@@ -2029,6 +2001,37 @@ TEST_F (ArrangerObjectSelectionOperatorTest, SelectionHasTimebaseProviders)
   selection_model_->select (
     list_model_.index (3, 0), QItemSelectionModel::Select);
   EXPECT_TRUE (operator_->selectionHasTimebaseProviders ());
+}
+
+// changeVelocities must clamp to [0,127] instead of rejecting, so a single
+// deferred commit on drag release never no-ops when overshooting.
+TEST_F (ArrangerObjectSelectionOperatorTest, ChangeVelocitiesClampsToMax)
+{
+  note_ref.get_object_as<structure::arrangement::MidiNote> ()->setVelocity (120);
+  selection_model_->select (
+    list_model_.index (1, 0), QItemSelectionModel::Select);
+
+  const bool result = operator_->changeVelocities (20); // 120 + 20 = 140
+
+  EXPECT_TRUE (result);
+  EXPECT_EQ (
+    note_ref.get_object_as<structure::arrangement::MidiNote> ()->velocity (),
+    127);
+  EXPECT_EQ (undo_stack_->index (), 1);
+}
+
+TEST_F (ArrangerObjectSelectionOperatorTest, ChangeVelocitiesClampsToMin)
+{
+  note_ref.get_object_as<structure::arrangement::MidiNote> ()->setVelocity (5);
+  selection_model_->select (
+    list_model_.index (1, 0), QItemSelectionModel::Select);
+
+  const bool result = operator_->changeVelocities (-20); // 5 - 20 = -15
+
+  EXPECT_TRUE (result);
+  EXPECT_EQ (
+    note_ref.get_object_as<structure::arrangement::MidiNote> ()->velocity (), 0);
+  EXPECT_EQ (undo_stack_->index (), 1);
 }
 
 } // namespace zrythm::actions
