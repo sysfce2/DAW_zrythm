@@ -61,6 +61,21 @@ Arranger {
 
     anchors.fill: parent
 
+    // Tempo automation curve drawn behind the tempo objects.
+    TempoCurveCanvas {
+      curveColor: palette.accent
+      dragActive: root.dragState.dragMode === ArrangerDragState.DragMode.Move
+      dragDeltaPx: root.dragState.dragDeltaPx
+      height: root.laneHeight
+      pxPerTick: root.ruler.pxPerTick
+      scrollX: root.scrollX
+      scrollXPlusWidth: root.scrollXPlusWidth
+      selectionModel: root.arrangerSelectionModel
+      tempoObjectManager: root.tempoObjectManager
+      width: root.scrollViewWidth
+      x: root.scrollX
+    }
+
     Repeater {
       id: tempoObjectsRepeater
 

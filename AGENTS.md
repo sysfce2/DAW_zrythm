@@ -243,6 +243,7 @@ Zrythm makes extensive use of modern C++ features:
 - Use `auto` for type-deduced variable declarations where the type is obvious from the initializer (e.g., `const auto &changes = tracker.changes();`, `auto * port = ...`)
 - Prefer pimpl (pointer to implementation) for non-trivial class members that don't need to be exposed in the header, to reduce include dependencies and improve compile times
 - API doc comments (Doxygen `@brief`, `@param`, `@return`) must describe the contract — what the function does, its parameters, return value, preconditions, and edge cases — not who calls it or why it was introduced. Mentioning specific callers (e.g. "exposed for use by X") couples the docs to internal architecture and goes stale when those callers change; design rationale belongs in commit messages or architecture docs, not the method's API comment
+- When a class derives the same template twice (e.g. `TempoObjectManager` derives both `ArrangerObjectOwner<TempoObject>` and `ArrangerObjectOwner<TimeSignatureObject>`), member lookup is ambiguous. Disambiguate with explicit base-class scope resolution (e.g. `manager->structure::arrangement::ArrangerObjectOwner<...TempoObject>::get_sorted_children_view()`), not `static_cast`
 
 ### Unit Safety
 

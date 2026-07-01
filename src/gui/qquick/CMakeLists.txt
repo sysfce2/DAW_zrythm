@@ -27,6 +27,8 @@ target_sources(zrythm_gui_lib
       ruler_grid_canvas_renderer.h
       spectrum_analyzer_canvas_item.h
       spectrum_analyzer_canvas_renderer.h
+      tempo_curve_canvas_item.h
+      tempo_curve_canvas_renderer.h
       timeline_position_tracker.h
       waveform_canvas_item.h
       waveform_canvas_renderer.h
@@ -52,6 +54,8 @@ target_sources(zrythm_gui_lib
     ruler_grid_canvas_renderer.cpp
     spectrum_analyzer_canvas_item.cpp
     spectrum_analyzer_canvas_renderer.cpp
+    tempo_curve_canvas_item.cpp
+    tempo_curve_canvas_renderer.cpp
     timeline_position_tracker.cpp
     waveform_canvas_item.cpp
     waveform_canvas_renderer.cpp
