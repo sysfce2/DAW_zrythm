@@ -91,13 +91,21 @@ ColumnLayout {
                     onTriggered: padOp.applyPresetFromScale(scaleMenu.modelData.value, index)
                   }
 
-                  onObjectAdded: scaleMenu.addItem(object)
-                  onObjectRemoved: scaleMenu.removeItem(object)
+                  onObjectAdded: (index, object) => {
+                    scaleMenu.addItem(object);
+                  }
+                  onObjectRemoved: (index, object) => {
+                    scaleMenu.removeItem(object);
+                  }
                 }
               }
 
-              onObjectAdded: fromScaleMenu.addMenu(object)
-              onObjectRemoved: fromScaleMenu.removeMenu(object)
+              onObjectAdded: (index, object) => {
+                fromScaleMenu.addMenu(object);
+              }
+              onObjectRemoved: (index, object) => {
+                fromScaleMenu.removeMenu(object);
+              }
             }
           }
 
@@ -125,13 +133,21 @@ ColumnLayout {
                   onTriggered: padOp.applyPreset(modelData)
                 }
 
-                onObjectAdded: categoryMenu.addItem(object)
-                onObjectRemoved: categoryMenu.removeItem(object)
+                onObjectAdded: (index, object) => {
+                  categoryMenu.addItem(object);
+                }
+                onObjectRemoved: (index, object) => {
+                  categoryMenu.removeItem(object);
+                }
               }
             }
 
-            onObjectAdded: presetMenu.addMenu(object)
-            onObjectRemoved: presetMenu.removeMenu(object)
+            onObjectAdded: (index, object) => {
+              presetMenu.addMenu(object);
+            }
+            onObjectRemoved: (index, object) => {
+              presetMenu.removeMenu(object);
+            }
           }
         }
       }
