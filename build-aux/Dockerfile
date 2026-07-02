@@ -147,6 +147,14 @@ RUN curl -L -o /usr/local/bin/appimagetool \
     chmod +x /usr/local/bin/appimagetool && \
     appimagetool --version
 
+# sccache (shared compiler cache; S3 backend configured at runtime via env)
+RUN SCCACHE_VERSION=0.16.0 && \
+    wget -qO- "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
+    tar xz -C /tmp && \
+    install -m755 "/tmp/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache" /usr/local/bin && \
+    rm -rf /tmp/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl && \
+    sccache --version
+
 # Install gitlab runner too so container can be used as a runner
 # (needs manual registration)
 RUN curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | bash && \

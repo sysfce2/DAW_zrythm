@@ -53,9 +53,18 @@ file(WRITE "${CMAKE_BINARY_DIR}/version.env"
   "VERSION_GIT_SHA=${ZRYTHM_VERSION_GIT_SHA}\n"
 )
 
-option(ZRYTHM_CCACHE "Enable ccache" OFF)
-if(ZRYTHM_CCACHE)
-  include(CCache)
+set(ZRYTHM_COMPILER_CACHE "OFF" CACHE STRING "Compiler cache backend: OFF, ccache, or sccache")
+set_property(CACHE ZRYTHM_COMPILER_CACHE PROPERTY STRINGS OFF ccache sccache)
+if(ZRYTHM_COMPILER_CACHE)
+  include(CompilerCache)
+endif()
+
+# PCH and a compiler cache combine badly: PCH artifacts are large and slow to
+# hash/upload, crushing hit rates. Fail hard so they are never mixed.
+if(ZRYTHM_COMPILER_CACHE AND NOT CMAKE_DISABLE_PRECOMPILE_HEADERS)
+  message(FATAL_ERROR
+    "ZRYTHM_COMPILER_CACHE='${ZRYTHM_COMPILER_CACHE}' is incompatible with precompiled headers. "
+    "Pass -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON or -DZRYTHM_COMPILER_CACHE=OFF.")
 endif()
 
 #==============================================================================
