@@ -105,29 +105,19 @@ ArrangerObjectSelectionOperator::changeVelocities (int velocity_delta)
       return false;
     }
 
-  // Clamp the delta so every selected note stays within [0, 127].
-  int  min_velocity = 127;
-  int  max_velocity = 0;
-  bool found_note = false;
-  for (const auto &obj_ref : selected_objects)
-    {
+  // Per-note clamping is applied in MoveArrangerObjectsCommand::redo, so push
+  // the raw delta. Skip only when no selected note would actually change, to
+  // avoid pushing no-op undo entries (e.g. all notes already pinned at a bound
+  // and the delta pushes further into it).
+  const bool any_change = std::ranges::any_of (
+    selected_objects, [velocity_delta] (const auto &obj_ref) {
       auto * note =
         obj_ref.template get_object_as<structure::arrangement::MidiNote> ();
-      if (note == nullptr)
-        continue;
-      found_note = true;
-      min_velocity = std::min (min_velocity, note->velocity ());
-      max_velocity = std::max (max_velocity, note->velocity ());
-    }
-  if (!found_note)
-    {
-      z_debug ("No MIDI notes selected for velocity change");
-      return false;
-    }
-
-  const int clamped_delta =
-    std::clamp (velocity_delta, -min_velocity, 127 - max_velocity);
-  if (clamped_delta == 0)
+      return note
+             && std::clamp (note->velocity () + velocity_delta, 0, 127)
+                  != note->velocity ();
+    });
+  if (!any_change)
     {
       return true;
     }
@@ -135,7 +125,7 @@ ArrangerObjectSelectionOperator::changeVelocities (int velocity_delta)
   // Create and push command
   auto * command = new commands::MoveArrangerObjectsCommand (
     std::move (selected_objects), units::ticks (0),
-    static_cast<double> (clamped_delta),
+    static_cast<double> (velocity_delta),
     commands::MoveArrangerObjectsCommand::VerticalChangeType::Velocity);
   undo_stack_.push (command);
 

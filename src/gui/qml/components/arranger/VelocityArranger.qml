@@ -18,27 +18,7 @@ Arranger {
     return null;
   }
 
-  function getVelocityAtY(y: real): int {
-    return Math.round(((maxVelocityHeight - y) / maxVelocityHeight) * 127);
-  }
-
-  function getYAtVelocity(velocity: int): real {
-    return maxVelocityHeight - (velocity / 127.0) * maxVelocityHeight;
-  }
-
   function moveSelectionsY(dy: real, prevY: real) {
-    const prevVelocity = getVelocityAtY(prevY);
-    const currentVelocity = getVelocityAtY(prevY + dy);
-    if (currentVelocity == prevVelocity) {
-      return;
-    }
-    const velocityDelta = currentVelocity - prevVelocity;
-    if (root.selectionOperator) {
-      const success = root.selectionOperator.changeVelocities(velocityDelta);
-      if (!success) {
-        console.warn("Failed to change velocities - validation failed");
-      }
-    }
   }
 
   function moveTemporaryObjectsY(dy: real, prevY: real) {
@@ -91,7 +71,17 @@ Arranger {
             anchors.left: parent.left
             anchors.right: parent.right
             arrangerObject: velocityLoader.midiNote
-            height: parent.height * (velocityLoader.midiNote.velocity / 127.0)
+            // Clamped integer velocity shown live during a velocity drag.
+            // Drives both the bar height and the number label, so the preview
+            // matches the per-note commit exactly (no snap on release).
+            displayVelocity: {
+              const base = velocityLoader.midiNote.velocity;
+              if (!(velocityLoader.selectionTracker.isSelected && root.dragState.dragMode === ArrangerDragState.DragMode.Velocity))
+                return base;
+              const delta = Math.round(-root.dragState.dragDeltaY / root.maxVelocityHeight * 127);
+              return Math.max(0, Math.min(127, base + delta));
+            }
+            height: parent.height * (velocityBar.displayVelocity / 127.0)
             isSelected: velocityLoader.selectionTracker.isSelected
             showVelocityText: isHovered || velocityMouseArea.pressed || root.currentAction === Arranger.ResizingUp
             track: root.clipEditor.track
@@ -112,15 +102,21 @@ Arranger {
               if (pressed) {
                 const dy = mouse.y - lastY;
                 lastY = mouse.y;
-                root.moveSelectionsY(dy, 0);
+                root.dragState.dragDeltaY += dy;
               }
             }
             onPressed: mouse => {
               lastY = mouse.y;
               root.handleObjectSelection(midiNotesRepeater.model, velocityLoader.index, mouse);
               root.currentAction = Arranger.ResizingUp;
+              root.dragState.dragDeltaY = 0;
+              root.dragState.dragMode = ArrangerDragState.DragMode.Velocity;
             }
             onReleased: {
+              const delta = root.maxVelocityHeight > 0 ? Math.round(-root.dragState.dragDeltaY / root.maxVelocityHeight * 127) : 0;
+              if (delta !== 0)
+                root.selectionOperator.changeVelocities(delta);
+              root.dragState.reset();
               root.currentAction = Arranger.None;
             }
           }

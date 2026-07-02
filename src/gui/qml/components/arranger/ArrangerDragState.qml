@@ -11,7 +11,8 @@ QtObject {
     None,
     Move,
     ResizeFromStart,
-    ResizeFromEnd
+    ResizeFromEnd,
+    Velocity
   }
 
   property real dragDeltaPx: 0

@@ -373,6 +373,47 @@ TEST_F (MoveArrangerObjectsCommandTest, VelocityClampingAtBoundaries)
     }
 }
 
+// Multiple notes clamp per-note: the loudest pins at 127 while quieter ones
+// keep rising (DAW-standard), rather than a global delta clamp pinning the
+// whole group when one note hits a bound.
+TEST_F (MoveArrangerObjectsCommandTest, VelocityClampsPerNoteAcrossNotes)
+{
+  auto note1_ref =
+    factory->get_builder<structure::arrangement::MidiNote> ()
+      .build_in_registry ();
+  auto note2_ref =
+    factory->get_builder<structure::arrangement::MidiNote> ()
+      .build_in_registry ();
+  note1_ref.get_object_as<structure::arrangement::MidiNote> ()->setVelocity (
+    100);
+  note2_ref.get_object_as<structure::arrangement::MidiNote> ()->setVelocity (50);
+
+  std::vector<structure::arrangement::ArrangerObjectUuidReference> notes{
+    note1_ref, note2_ref
+  };
+
+  MoveArrangerObjectsCommand command (
+    notes, units::ticks (0.0), 40.0,
+    MoveArrangerObjectsCommand::VerticalChangeType::Velocity);
+  command.redo ();
+
+  // 100 + 40 clamps to 127; 50 + 40 rises to 90 (not pinned by the loudest).
+  EXPECT_EQ (
+    note1_ref.get_object_as<structure::arrangement::MidiNote> ()->velocity (),
+    127);
+  EXPECT_EQ (
+    note2_ref.get_object_as<structure::arrangement::MidiNote> ()->velocity (),
+    90);
+
+  command.undo ();
+  EXPECT_EQ (
+    note1_ref.get_object_as<structure::arrangement::MidiNote> ()->velocity (),
+    100);
+  EXPECT_EQ (
+    note2_ref.get_object_as<structure::arrangement::MidiNote> ()->velocity (),
+    50);
+}
+
 TEST_F (MoveArrangerObjectsCommandTest, NegativeTickDelta)
 {
   // First, move the objects so that the total ticks are still positive

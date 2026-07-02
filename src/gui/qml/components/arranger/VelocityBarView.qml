@@ -7,6 +7,9 @@ import Zrythm
 ArrangerObjectBaseView {
   id: root
 
+  // Velocity shown by the label and used for the bar height; defaults to the
+  // note's velocity and is overridden live by VelocityArranger during a drag.
+  property int displayVelocity: midiNote.velocity
   readonly property MidiNote midiNote: arrangerObject as MidiNote
   property bool showVelocityText: false
 
@@ -22,7 +25,7 @@ ArrangerObjectBaseView {
       anchors.horizontalCenter: parent.horizontalCenter
       color: palette.text
       font.pixelSize: 10
-      text: root.midiNote.velocity
+      text: root.displayVelocity
       visible: root.showVelocityText
     }
   }
