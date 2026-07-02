@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "dsp/chord_audition_state.h"
+#include "dsp/midi_event.h"
 
 namespace zrythm::dsp
 {

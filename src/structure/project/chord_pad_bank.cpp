@@ -6,6 +6,7 @@
 #include "dsp/chord_preset.h"
 #include "structure/project/chord_pad_bank.h"
 #include "utils/logger.h"
+#include "utils/utf8_string.h"
 
 #include <nlohmann/json.hpp>
 

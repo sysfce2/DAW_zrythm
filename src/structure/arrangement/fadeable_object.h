@@ -5,6 +5,7 @@
 
 #include "dsp/curve.h"
 #include "dsp/position.h"
+#include "dsp/tempo_map_qml_adapter.h"
 #include "utils/icloneable.h"
 
 #include <nlohmann/json_fwd.hpp>

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2019-2021, 2024-2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2019-2021, 2024-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #pragma once
@@ -7,6 +7,7 @@
 #include "dsp/transport.h"
 #include "utils/pcg_rand.h"
 #include "utils/units.h"
+#include "utils/utf8_string.h"
 
 #define QUANTIZE_OPTIONS_IS_EDITOR(qo) \
   (PROJECT->quantize_opts_editor_.get () == qo)

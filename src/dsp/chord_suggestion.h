@@ -40,6 +40,13 @@ operator& (ChordCandidateCategory a, ChordCandidateCategory b) noexcept
     static_cast<uint32_t> (a) & static_cast<uint32_t> (b));
 }
 
+inline ChordCandidateCategory &
+operator|= (ChordCandidateCategory &a, ChordCandidateCategory b) noexcept
+{
+  a = a | b;
+  return a;
+}
+
 /// Harmonic function of a chord within its scale.
 enum class HarmonicFunction
 {

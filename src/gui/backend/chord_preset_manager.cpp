@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2022-2024, 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include <fmt/std.h>
+
 #include "gui/backend/backend/zrythm.h"
 #include "gui/backend/chord_preset_manager.h"
 #include "gui/backend/zrythm_application.h"
