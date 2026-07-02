@@ -308,8 +308,16 @@ ClipRenderer::handle_automation_clip_range (
   dsp::TimelineTick                             segment_start)
 {
   const auto * warp = clip.contentWarp ();
+  const auto  &tempo_map = clip.get_tempo_map ();
 
-  // Timeline positions of the segment boundaries
+  // Absolute timeline tick and sample of the clip's content position 0.
+  // Positions from to_timeline() are relative to the clip start, so these
+  // are needed to convert back to absolute coordinates for tempo_map calls.
+  const auto clip_start_tl = warp->contentToTimeline (dsp::ContentTick{});
+  const auto clip_start_sample =
+    tempo_map.tick_to_samples (clip_start_tl).in (units::samples);
+
+  // Timeline positions of the segment boundaries (relative to clip start)
   const auto tl_segment_start = warp->contentToTimeline (virtual_range.first);
   const auto tl_segment_end = warp->contentToTimeline (virtual_range.second);
   const auto segment_end = segment_start + (tl_segment_end - tl_segment_start);
@@ -319,113 +327,90 @@ ClipRenderer::handle_automation_clip_range (
     return given_ap->position ()->asTick ();
   };
 
-  const auto &tempo_map = clip.get_tempo_map ();
-
-  // Helper: content position → timeline position within this loop segment
+  // Helper: content position → relative timeline position within this loop
+  // segment
   auto to_timeline = [&] (dsp::ContentTick ct) -> dsp::TimelineTick {
     return segment_start + (warp->contentToTimeline (ct) - tl_segment_start);
   };
 
-  // Helper lambda to interpolate values between two automation points
+  // Helper: relative timeline tick → output buffer index.
+  auto rel_tick_to_buffer_idx = [&] (dsp::TimelineTick rel) -> size_t {
+    const auto abs_sample =
+      tempo_map.tick_to_samples_rounded (rel + clip_start_tl).in (units::samples);
+    return static_cast<size_t> (std::max (0.0, abs_sample - clip_start_sample));
+  };
+
+  // Helper lambda to interpolate values between two automation points.
+  // All tick parameters are relative to the clip start.
   const auto interpolate_values =
     [&] (
       const AutomationPoint &prev_point, const AutomationPoint &next_point,
-      dsp::TimelineTick                               prev_point_start,
+      dsp::TimelineTick /*prev_point_start*/,
       std::pair<dsp::TimelineTick, dsp::TimelineTick> range_in_output_buffer) {
-      const auto start_idx = static_cast<size_t> (
-        tempo_map.tick_to_samples_rounded (range_in_output_buffer.first)
-          .in (units::samples));
+      const auto start_idx =
+        rel_tick_to_buffer_idx (range_in_output_buffer.first);
       if (start_idx >= values.size ())
         return;
 
-      const auto tl_prev = to_timeline (prev_point.position ()->asTick ());
-      const auto tl_next = to_timeline (next_point.position ()->asTick ());
+      // Absolute timeline ticks of the two automation points.
+      const auto tl_prev =
+        to_timeline (prev_point.position ()->asTick ()) + clip_start_tl;
+      const auto tl_next =
+        to_timeline (next_point.position ()->asTick ()) + clip_start_tl;
       const auto tl_distance = tl_next - tl_prev;
       assert (tl_distance > dsp::TimelineTick{});
 
-      const auto distance_between_points_in_segment =
-        std::min (tl_next, range_in_output_buffer.second)
-        - std::max (tl_prev, range_in_output_buffer.first);
+      const auto abs_range_start = range_in_output_buffer.first + clip_start_tl;
+      const auto abs_range_end = range_in_output_buffer.second + clip_start_tl;
 
       const auto start_val = prev_point.value ();
       const auto end_val = next_point.value ();
       const auto diff = end_val - start_val;
       const auto curve_up = start_val < end_val;
 
-      // Calculate the offset from the previous point to the start position
-      const auto start_offset_ratio = static_cast<float> (
-        (range_in_output_buffer.first.asDouble () - prev_point_start.asDouble ())
-        / tl_distance.asDouble ());
-      assert (start_offset_ratio >= 0.f && start_offset_ratio <= 1.f);
-
-      // Calculate the segment length in samples
       const auto segment_length_samples = static_cast<size_t> (
-        (tempo_map.tick_to_samples_rounded (range_in_output_buffer.second)
-         - tempo_map.tick_to_samples_rounded (range_in_output_buffer.first))
+        (tempo_map.tick_to_samples_rounded (abs_range_end)
+         - tempo_map.tick_to_samples_rounded (abs_range_start))
           .in (units::samples));
-
-      // And the distance between the points in samples so we can interpolate
-      // correctly
-      const auto sample_distance_between_points =
-        tempo_map.tick_to_samples (tl_distance);
-      [[maybe_unused]] const auto sample_distance_between_points_in_segment =
-        tempo_map.tick_to_samples (distance_between_points_in_segment);
 
       if (
         segment_length_samples > 0 && tl_distance > dsp::TimelineTick{}
         && start_idx + segment_length_samples <= values.size ())
         {
-          // Check if this is a linear curve (most common case)
           const bool is_linear_curve =
             prev_point.curveOpts ()->algorithm ()
               != dsp::CurveOptions::Algorithm::Pulse
             && utils::math::floats_equal (
               prev_point.curveOpts ()->curviness (), 0.0);
 
-          if (is_linear_curve)
+          const double tl_prev_d = tl_prev.asDouble ();
+          const double tl_distance_d = tl_distance.asDouble ();
+
+          for (size_t i = 0; i < segment_length_samples; ++i)
             {
-              // Fast path for linear curves - use simple linear interpolation
-              // Calculate the interpolated value at the start position
-              const auto start_val_interp =
-                start_val + (diff * start_offset_ratio);
+              // Convert this sample back to absolute timeline tick to get
+              // the correct tick-space ratio within the segment.
+              const double abs_sample_d =
+                clip_start_sample + static_cast<double> (start_idx + i);
+              const auto tick_at_sample =
+                tempo_map.samples_to_tick (units::samples (abs_sample_d));
+              double ratio =
+                (tick_at_sample.asDouble () - tl_prev_d) / tl_distance_d;
+              ratio = std::clamp (ratio, 0.0, 1.0);
 
-              // Calculate the step for interpolation from start to end
-              const auto step =
-                (end_val - start_val_interp)
-                / static_cast<float> (
-                  sample_distance_between_points.in (units::samples));
-
-              // Interpolate from start position to the end position
-              for (size_t i = 0; i < segment_length_samples; ++i)
+              if (is_linear_curve)
                 {
-                  const auto interpolated_val =
-                    start_val_interp + (step * static_cast<float> (i));
-                  values[start_idx + i] = interpolated_val;
+                  values[start_idx + i] =
+                    start_val + diff * static_cast<float> (ratio);
                 }
-            }
-          else
-            {
-              // Slower path for curved automation - use the curve's
-              // interpolation method
-              for (size_t i = 0; i < segment_length_samples; ++i)
+              else
                 {
-                  // Calculate the position within the total segment (0 to 1)
-                  const auto offset_ratio =
-                    static_cast<float> (i)
-                    / static_cast<float> (
-                      sample_distance_between_points.in (units::samples));
-                  assert (offset_ratio >= 0.f && offset_ratio <= 1.f);
-
-                  // Get the curve value (expensive operation)
-                  const auto curve_val = clip.get_normalized_value_in_curve (
-                    prev_point, offset_ratio);
-
-                  // Interpolate between the two points using the curve
+                  const auto curve_val =
+                    clip.get_normalized_value_in_curve (prev_point, ratio);
                   const auto interpolated_val =
                     curve_up
                       ? start_val + (std::abs (diff) * curve_val)
                       : end_val + (std::abs (diff) * curve_val);
-
                   values[start_idx + i] = static_cast<float> (interpolated_val);
                 }
             }
@@ -485,10 +470,8 @@ ClipRenderer::handle_automation_clip_range (
       else
         {
           // This is the last point, fill remaining samples with its value
-          const auto start_idx = static_cast<size_t> (
-            tempo_map.tick_to_samples_rounded (ap_start).in (units::samples));
-          const auto end_idx = static_cast<size_t> (
-            tempo_map.tick_to_samples_rounded (segment_end).in (units::samples));
+          const auto start_idx = rel_tick_to_buffer_idx (ap_start);
+          const auto end_idx = rel_tick_to_buffer_idx (segment_end);
 
           if (start_idx < values.size () && end_idx > start_idx)
             {

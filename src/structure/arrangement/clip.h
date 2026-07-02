@@ -152,6 +152,16 @@ public:
   Q_SIGNAL void loopedChanged ();
 
   /**
+   * @brief Emitted when the clip's content changes.
+   *
+   * Each concrete Clip subclass forwards its ArrangerObjectListModel's
+   * contentChanged signal to this signal in its constructor, so consumers
+   * (e.g. canvas items) can connect uniformly without knowing the specific
+   * clip type or its child models.
+   */
+  Q_SIGNAL void contentChanged ();
+
+  /**
    * @brief Emitted when any loop-related property changes.
    *
    * Fired in addition to the more specific signals (@ref loopedChanged,

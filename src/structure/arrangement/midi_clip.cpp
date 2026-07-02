@@ -16,10 +16,10 @@ MidiClip::MidiClip (
 {
   QObject::connect (
     midiNotes (), &ArrangerObjectListModel::contentChanged, this,
-    &MidiClip::contentChanged);
+    &Clip::contentChanged);
   QObject::connect (
     midiControlEvents (), &ArrangerObjectListModel::contentChanged, this,
-    &MidiClip::contentChanged);
+    &Clip::contentChanged);
 
   // Reconfigure warp whenever the effective timebase changes.
   QObject::connect (

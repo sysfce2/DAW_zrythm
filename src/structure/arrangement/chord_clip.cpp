@@ -13,6 +13,9 @@ ChordClip::ChordClip (
     : Clip (Type::ChordClip, tempo_map_wrapper, parent),
       ArrangerObjectOwner (object_registry, *this)
 {
+  QObject::connect (
+    ArrangerObjectOwner<ChordObject>::get_model (),
+    &ArrangerObjectListModel::contentChanged, this, &Clip::contentChanged);
 }
 
 void

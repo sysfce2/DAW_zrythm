@@ -8,6 +8,8 @@ target_sources(zrythm_gui_lib
       arranger_grid_canvas_item.h
       arranger_grid_canvas_renderer.h
       arranger_object_helper.h
+      automation_clip_canvas_item.h
+      automation_clip_canvas_renderer.h
       audio_clip_waveform_canvas_item.h
       chord_clip_segmenter.h
       chord_highlighter.h
@@ -36,6 +38,8 @@ target_sources(zrythm_gui_lib
     arranger_grid_canvas_item.cpp
     arranger_grid_canvas_renderer.cpp
     arranger_object_helper.cpp
+    automation_clip_canvas_item.cpp
+    automation_clip_canvas_renderer.cpp
     audio_clip_waveform_canvas_item.cpp
     chord_clip_segmenter.cpp
     chord_highlighter.cpp

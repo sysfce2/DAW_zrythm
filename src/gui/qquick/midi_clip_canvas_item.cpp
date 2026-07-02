@@ -36,7 +36,7 @@ MidiClipCanvasItem::setMidiClip (structure::arrangement::MidiClip * clip)
     {
       clip_connections_.push_back (
         QObject::connect (
-          midi_clip_, &structure::arrangement::MidiClip::contentChanged, this,
+          midi_clip_, &structure::arrangement::Clip::contentChanged, this,
           [this] () { update (); }, Qt::ConnectionType::QueuedConnection));
 
       clip_connections_.push_back (

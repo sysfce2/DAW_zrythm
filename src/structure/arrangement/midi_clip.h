@@ -45,8 +45,6 @@ public:
   // QML Interface
   // ========================================================================
 
-  Q_SIGNAL void contentChanged ();
-
   // ========================================================================
 
   /// Source tempo for Absolute-mode anchor (default 0 = no anchor).

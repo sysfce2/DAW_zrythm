@@ -22,6 +22,10 @@ AudioClip::AudioClip (
     fadeRange (), &ArrangerObjectFadeRange::fadePropertiesChanged, this,
     &ArrangerObject::propertiesChanged);
 
+  QObject::connect (
+    ArrangerObjectOwner<AudioSourceObject>::get_model (),
+    &ArrangerObjectListModel::contentChanged, this, &Clip::contentChanged);
+
   // Reconfigure warp whenever the effective timebase changes.
   QObject::connect (
     timebaseProvider (), &dsp::TimebaseProvider::effectiveTimebaseChanged, this,

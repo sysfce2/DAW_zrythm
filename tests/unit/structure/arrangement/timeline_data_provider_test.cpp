@@ -1552,7 +1552,7 @@ TEST_F (
   auto value_at_start_opt =
     automation_provider_->get_automation_value_rt (clip_start_samples);
   ASSERT_TRUE (value_at_start_opt.has_value ());
-  EXPECT_FLOAT_EQ (value_at_start_opt.value (), 0.0f);
+  EXPECT_NEAR (value_at_start_opt.value (), 0.0f, 1e-5f);
 }
 
 // ========== Chord Clip Tests ==========

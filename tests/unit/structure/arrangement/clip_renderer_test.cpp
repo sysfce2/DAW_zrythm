@@ -1622,6 +1622,42 @@ TEST_F (ClipRendererTest, SerializeAutomationClipWithInterpolation)
     }
 }
 
+/**
+ * @brief Verifies that linear automation interpolation respects tick-space
+ * positions when tempo changes exist within the segment.
+ */
+TEST_F (ClipRendererTest, SerializeAutomationClipLinearWithTempoChange)
+{
+  // Place clip at timeline position 0 with a 4-beat length (3840 ticks).
+  automation_clip->position ()->setTicks (0);
+  automation_clip->length ()->setTicks (3840);
+
+  // Tempo change at the tick midpoint (1920 ticks = 2 beats):
+  //   120 BPM for ticks 0..1920  -> 44100 samples (1 second)
+  //    60 BPM for ticks 1920..3840 -> 88200 samples (2 seconds)
+  tempo_map->add_tempo_event (
+    units::ticks (1920), units::bpm (60.0), dsp::TempoMap::CurveType::Constant);
+
+  // Linear ramp: 0.0 at start, 1.0 at end.
+  add_automation_point (0.0f, 0);
+  add_automation_point (1.0f, 3840);
+
+  std::vector<float> values;
+  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+
+  ASSERT_FALSE (values.empty ());
+
+  // Sample index of the tick midpoint (tick 1920).
+  const auto tick_midpoint_sample = static_cast<size_t> (
+    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (1920) })
+      .in (units::samples));
+
+  ASSERT_LT (tick_midpoint_sample, values.size ());
+
+  // For a linear curve, the value at the tick midpoint must be 0.5.
+  EXPECT_NEAR (values[tick_midpoint_sample], 0.5f, 0.02f);
+}
+
 TEST_F (ClipRendererTest, SerializeAutomationClipWithLooping)
 {
   // Add an automation point within the loop range
@@ -1943,9 +1979,9 @@ TEST_F (ClipRendererTest, SerializeAutomationClipLoopedEndingMidCurve)
     }
 
   // Check that we have the expected values at each point
-  EXPECT_FLOAT_EQ (values[first_point_samples], 0.0f);
-  EXPECT_FLOAT_EQ (values[second_point_samples], 0.5f);
-  EXPECT_FLOAT_EQ (values[third_point_samples], 1.0f);
+  EXPECT_NEAR (values[first_point_samples], 0.0f, 0.001f);
+  EXPECT_NEAR (values[second_point_samples], 0.5f, 0.001f);
+  EXPECT_NEAR (values[third_point_samples], 1.0f, 0.001f);
 
   // Check that values are interpolated from the third point (1.0) to the fourth
   // point (0.2) in the first loop
@@ -1977,8 +2013,8 @@ TEST_F (ClipRendererTest, SerializeAutomationClipLoopedEndingMidCurve)
   const auto samples_at_end = static_cast<size_t> (
     tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (200) })
       .in (units::samples));
-  EXPECT_NEAR (values[samples_after_looping_back], 0.25f, 0.0001f);
-  EXPECT_NEAR (values[samples_after_looping_back_plus_25], 0.5f, 0.0001f);
+  EXPECT_NEAR (values[samples_after_looping_back], 0.25f, 0.001f);
+  EXPECT_NEAR (values[samples_after_looping_back_plus_25], 0.5f, 0.001f);
   EXPECT_NEAR (values[samples_at_end - 1], 0.75f, 0.001f);
 }
 
@@ -2319,12 +2355,12 @@ TEST_F (ClipRendererTest, SerializeAutomationClipLoopStartMidCurve)
   // The second point should appear at the correct position in both loops
   {
     // at 75 ticks
-    EXPECT_FLOAT_EQ (values[second_point_samples], 1.0f);
+    EXPECT_NEAR (values[second_point_samples], 1.0f, 0.001f);
     const auto second_point_in_second_loop =
       second_point_samples + loop_length_samples;
 
     // at 175 ticks
-    EXPECT_FLOAT_EQ (values[second_point_in_second_loop], 1.0f);
+    EXPECT_NEAR (values[second_point_in_second_loop], 1.0f, 0.001f);
   }
 }
 

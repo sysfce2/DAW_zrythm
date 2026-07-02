@@ -15,6 +15,9 @@ AutomationClip::AutomationClip (
     : Clip (Type::AutomationClip, tempo_map_wrapper, parent),
       ArrangerObjectOwner (registry, *this)
 {
+  QObject::connect (
+    ArrangerObjectOwner<AutomationPoint>::get_model (),
+    &ArrangerObjectListModel::contentChanged, this, &Clip::contentChanged);
 }
 
 double
