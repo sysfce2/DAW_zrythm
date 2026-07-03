@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: © 2018-2025 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include "dsp/curve.h"
 #include "structure/arrangement/arranger_object_all.h"
 #include "structure/arrangement/clip.h"
 #include "structure/tracks/automation_track.h"
@@ -355,9 +356,6 @@ AutomationTrack::get_normalized_value (
       return ap->value ();
     }
 
-  bool  prev_ap_lower = ap->value () <= next_ap->value ();
-  float cur_next_diff = std::abs (ap->value () - next_ap->value ());
-
   /* ratio of how far in we are in the curve */
   const auto &val_tempo_map = clip->get_tempo_map ();
   const auto  val_clip_start =
@@ -389,13 +387,9 @@ AutomationTrack::get_normalized_value (
     }
   z_return_val_if_fail (ratio >= 0, 0.f);
 
-  auto result =
-    static_cast<float> (clip->get_normalized_value_in_curve (*ap, ratio));
-  result = result * cur_next_diff;
-  if (prev_ap_lower)
-    result += ap->value ();
-  else
-    result += next_ap->value ();
+  auto result = dsp::evaluate_curve (
+    ap->value (), next_ap->value (), ap->curveOpts ()->algorithm (),
+    static_cast<float> (ap->curveOpts ()->curviness ()), ratio);
 
   return result;
 }
