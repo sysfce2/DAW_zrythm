@@ -26,7 +26,7 @@ Item {
   readonly property alias contentWidth: scrollView.contentWidth
   property bool ctrlHeld: false
   property int currentAction: Ruler.CurrentAction.None
-  readonly property real defaultPxPerTick: 0.03
+  readonly property real defaultPxPerTick: 0.034
   readonly property real detailMeasureLabelPxThreshold: 64 // threshold to show/hide labels for more detailed measures
   readonly property real detailMeasurePxThreshold: 32 // threshold to show/hide more detailed measures
   property real dragStartLoopEndTicks: 0
