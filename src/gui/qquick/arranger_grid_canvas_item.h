@@ -40,6 +40,9 @@ class ArrangerGridCanvasItem : public QCanvasPainterItem
   Q_PROPERTY (
     QColor lineColor READ lineColor WRITE setLineColor NOTIFY lineColorChanged)
   Q_PROPERTY (
+    QColor barShadeColor READ barShadeColor WRITE setBarShadeColor NOTIFY
+      barShadeColorChanged)
+  Q_PROPERTY (
     qreal barLineOpacity READ barLineOpacity WRITE setBarLineOpacity NOTIFY
       barLineOpacityChanged)
   Q_PROPERTY (
@@ -67,6 +70,8 @@ public:
   void   setScrollXPlusWidth (qreal w);
   QColor lineColor () const { return line_color_; }
   void   setLineColor (const QColor &color);
+  QColor barShadeColor () const { return bar_shade_color_; }
+  void   setBarShadeColor (const QColor &color);
   qreal  barLineOpacity () const { return bar_line_opacity_; }
   void   setBarLineOpacity (qreal opacity);
   qreal  beatLineOpacity () const { return beat_line_opacity_; }
@@ -85,6 +90,7 @@ Q_SIGNALS:
   void scrollXChanged ();
   void scrollXPlusWidthChanged ();
   void lineColorChanged ();
+  void barShadeColorChanged ();
   void barLineOpacityChanged ();
   void beatLineOpacityChanged ();
   void sixteenthLineOpacityChanged ();
@@ -96,6 +102,7 @@ private:
   qreal                          scroll_x_ = 0.0;
   qreal                          scroll_x_plus_width_ = 0.0;
   QColor                         line_color_ = Qt::gray;
+  QColor                         bar_shade_color_ = Qt::transparent;
   qreal                          bar_line_opacity_ = 0.8;
   qreal                          beat_line_opacity_ = 0.6;
   qreal                          sixteenth_line_opacity_ = 0.4;

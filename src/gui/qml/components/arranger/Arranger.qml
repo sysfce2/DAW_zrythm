@@ -531,6 +531,7 @@ Item {
         // Vertical grid lines
         ArrangerGridCanvas {
           barLineOpacity: root.ruler.barLineOpacity
+          barShadeColor: Qt.alpha(root.palette.text, 0.04)
           beatLineOpacity: root.ruler.beatLineOpacity
           detailMeasurePxThreshold: root.ruler.detailMeasurePxThreshold
           height: arrangerContent.height

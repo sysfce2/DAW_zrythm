@@ -84,6 +84,16 @@ ArrangerGridCanvasItem::setLineColor (const QColor &color)
 }
 
 void
+ArrangerGridCanvasItem::setBarShadeColor (const QColor &color)
+{
+  if (bar_shade_color_ == color)
+    return;
+  bar_shade_color_ = color;
+  Q_EMIT barShadeColorChanged ();
+  update ();
+}
+
+void
 ArrangerGridCanvasItem::setBarLineOpacity (qreal opacity)
 {
   if (qFuzzyCompare (bar_line_opacity_, opacity))

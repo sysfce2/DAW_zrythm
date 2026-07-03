@@ -31,6 +31,7 @@ public:
 private:
   // Cached visual state from the item
   QColor line_color_;
+  QColor bar_shade_color_;
   float  scroll_x_{ 0.0f };
   float  px_per_tick_{ 0.0f };
   float  bar_line_opacity_{ 0.8f };

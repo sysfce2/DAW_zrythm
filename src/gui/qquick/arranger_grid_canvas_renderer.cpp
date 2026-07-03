@@ -14,6 +14,7 @@ ArrangerGridCanvasRenderer::synchronize (QCanvasPainterItem * item)
   auto * grid_item = static_cast<ArrangerGridCanvasItem *> (item);
 
   line_color_ = grid_item->lineColor ();
+  bar_shade_color_ = grid_item->barShadeColor ();
   scroll_x_ = static_cast<float> (grid_item->scrollX ());
   px_per_tick_ = static_cast<float> (grid_item->pxPerTick ());
   bar_line_opacity_ = static_cast<float> (grid_item->barLineOpacity ());
@@ -55,6 +56,23 @@ ArrangerGridCanvasRenderer::paint (QCanvasPainter * painter)
   painter->translate (-scroll_x_, 0.0f);
 
   const float h = canvas_height_;
+
+  // Alternating bar shading: fill every even-numbered bar with a faint tint
+  // to improve readability. Drawn before the grid lines so strokes render on
+  // top. bar_lines covers one bar past the visible right edge, so consecutive
+  // pairs span the full viewport width.
+  if (!grid_lines_.bar_lines.empty () && bar_shade_color_.alphaF () > 0.0f)
+    {
+      painter->setFillStyle (bar_shade_color_);
+      for (size_t i = 0; i + 1 < grid_lines_.bar_lines.size (); ++i)
+        {
+          const auto &cur = grid_lines_.bar_lines[i];
+          if ((cur.bar % 2) != 0)
+            continue;
+          const auto &next = grid_lines_.bar_lines[i + 1];
+          painter->fillRect (cur.x, 0.0f, next.x - cur.x, h);
+        }
+    }
 
   // Draw a batch of vertical lines with the same color
   auto draw_lines =
