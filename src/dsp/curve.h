@@ -94,7 +94,7 @@ public:
 public:
   // Rule of 0
   CurveOptions () = default;
-  CurveOptions (double curviness, Algorithm algo);
+  CurveOptions (double curviness, Algorithm algo) noexcept;
 
   /**
    * Returns the Y value on a curve.
@@ -102,7 +102,8 @@ public:
    * @param x X-coordinate, normalized.
    * @param start_higher Start at higher point.
    */
-  [[gnu::hot]] double get_normalized_y (double x, bool start_higher) const;
+  [[gnu::hot]] double
+  get_normalized_y (double x, bool start_higher) const noexcept;
 
   friend bool operator== (const CurveOptions &a, const CurveOptions &b);
 
@@ -169,6 +170,28 @@ public:
 private:
   CurveOptions &options_;
 };
+
+/**
+ * @brief Evaluates an automation curve at a normalized ratio, returning the
+ * scaled automation value.
+ *
+ * This is the single source of truth for curve evaluation — used by both the
+ * clip renderer (build-time) and the RT reader (playback) to avoid divergence.
+ *
+ * @param value_a Value at the start of the curve segment.
+ * @param value_b Value at the end of the curve segment.
+ * @param algo    Curve algorithm from the driving automation point.
+ * @param curviness Curviness from the driving automation point.
+ * @param ratio   Position within the curve [0, 1].
+ * @return The automation value at the given ratio.
+ */
+float
+evaluate_curve (
+  float                   value_a,
+  float                   value_b,
+  CurveOptions::Algorithm algo,
+  float                   curviness,
+  double                  ratio) noexcept [[clang::nonblocking]];
 
 } // namespace zrythm::dsp
 

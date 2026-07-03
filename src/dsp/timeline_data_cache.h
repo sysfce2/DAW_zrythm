@@ -5,6 +5,7 @@
 
 #include <span>
 
+#include "dsp/curve.h"
 #include "dsp/midi_event.h"
 #include "utils/units.h"
 
@@ -259,16 +260,48 @@ public:
   }
 
   /**
+   * @brief A constant-tempo sub-segment of an automation curve.
+   *
+   * Because the tempo is constant within each segment, the sample-space ratio
+   * equals the tick-space ratio, so the audio thread can evaluate the curve
+   * without accessing the tempo map.
+   */
+  struct CachedAutomationSegment
+  {
+    /** Absolute sample positions (for binary search). */
+    units::sample_t start_sample;
+    units::sample_t end_sample;
+
+    /**
+     * @brief Position within the full automation point pair (0 = first
+     * point, 1 = second point).
+     *
+     * For sub-segments split by tempo changes, these span a sub-range of
+     * [0, 1]. For flat hold segments, both are 1.0.
+     */
+    float ratio_start;
+    float ratio_end;
+
+    /** Values of the two automation points bracketing this segment. */
+    float point_a_value;
+    float point_b_value;
+
+    /** Curve parameters from the automation point that drives this segment. */
+    dsp::CurveOptions::Algorithm curve_algo;
+    float                        curve_curviness;
+  };
+
+  /**
    * @brief Automation cache entry for caching.
    *
    * Contains all the information needed to process automation data during
-   * playback without accessing the automation objects directly in the real-time
-   * thread.
+   * playback without accessing the automation objects directly in the
+   * real-time thread.
    */
   struct AutomationCacheEntry
   {
-    /** Automation values for the parameter. */
-    std::vector<float> automation_values;
+    /** Sorted constant-tempo segments covering the clip's span. */
+    std::vector<CachedAutomationSegment> segments;
 
     /** Start position in samples. */
     units::sample_t start_sample;
@@ -278,14 +311,13 @@ public:
   };
 
   /**
-   * @brief Adds an automation sequence for the given interval.
+   * @brief Adds an automation cache entry for the given interval.
    *
    * @param interval The time interval (in samples).
-   * @param automation_values The automation values.
+   * @param entry The automation cache entry (segments + interval).
    */
-  void add_automation_sequence (
-    IntervalType              interval,
-    const std::vector<float> &automation_values);
+  void
+  add_automation_sequence (IntervalType interval, AutomationCacheEntry &&entry);
 
   /**
    * @brief Gets the cached automation sequences.

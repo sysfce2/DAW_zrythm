@@ -12,13 +12,13 @@
 namespace zrythm::dsp
 {
 
-CurveOptions::CurveOptions (double curviness, Algorithm algo)
+CurveOptions::CurveOptions (double curviness, Algorithm algo) noexcept
     : curviness_ (curviness), algo_ (algo)
 {
 }
 
 double
-CurveOptions::get_normalized_y (double x, bool start_higher) const
+CurveOptions::get_normalized_y (double x, bool start_higher) const noexcept
 {
   z_return_val_if_fail_cmp (x, >=, 0.0, 0.0);
   z_return_val_if_fail_cmp (x, <=, 1.0, 0.0);
@@ -222,6 +222,26 @@ CurveOptionsQmlAdapter::setAlgorithm (
 
   options_.algo_ = algorithm;
   Q_EMIT algorithmChanged (algorithm);
+}
+
+float
+evaluate_curve (
+  float                   value_a,
+  float                   value_b,
+  CurveOptions::Algorithm algo,
+  float                   curviness,
+  double                  ratio) noexcept
+{
+  const float diff = value_b - value_a;
+  if (std::abs (diff) < 1e-5f)
+    return value_a; // flat segment — no curve needed
+
+  const bool         start_higher = diff < 0.0f;
+  const CurveOptions opts (curviness, algo);
+  const double       curve_val = opts.get_normalized_y (ratio, start_higher);
+  return start_higher
+           ? value_b + std::abs (diff) * static_cast<float> (curve_val)
+           : value_a + std::abs (diff) * static_cast<float> (curve_val);
 }
 
 } // namespace zrythm::dsp

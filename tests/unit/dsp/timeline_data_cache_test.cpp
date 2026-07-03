@@ -878,15 +878,32 @@ protected:
   {
     app_ = std::make_unique<ScopedQCoreApplication> ();
     cache = utils::make_qobject_unique<dsp::AutomationTimelineDataCache> ();
-
-    // Create a simple automation values vector for testing
-    automation_values = {
-      0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f
-    };
   }
 
   utils::QObjectUniquePtr<dsp::AutomationTimelineDataCache> cache;
-  std::vector<float>                                        automation_values;
+
+  // Build an AutomationCacheEntry with a single flat segment. The concrete
+  // sample positions/values are irrelevant to the behavior under test
+  // (sorting, removal, signals); add_automation_sequence() overwrites the
+  // entry's start/end from the interval.
+  static dsp::AutomationTimelineDataCache::AutomationCacheEntry
+  make_automation_entry ()
+  {
+    using Seg = dsp::AutomationTimelineDataCache::CachedAutomationSegment;
+    Seg seg;
+    seg.start_sample = units::samples (0);
+    seg.end_sample = units::samples (256);
+    seg.ratio_start = 0.0f;
+    seg.ratio_end = 1.0f;
+    seg.point_a_value = 0.5f;
+    seg.point_b_value = 0.5f;
+    seg.curve_algo = dsp::CurveOptions::Algorithm::Exponent;
+    seg.curve_curviness = 0.0f;
+
+    dsp::AutomationTimelineDataCache::AutomationCacheEntry entry;
+    entry.segments.push_back (std::move (seg));
+    return entry;
+  }
 
 private:
   std::unique_ptr<ScopedQCoreApplication> app_;
@@ -901,7 +918,7 @@ TEST_F (AutomationTimelineDataCacheTest, ClearMethod)
 {
   // Add an automation sequence first
   cache->add_automation_sequence (
-    { units::samples (0), units::samples (256) }, automation_values);
+    { units::samples (0), units::samples (256) }, make_automation_entry ());
   cache->finalize_changes ();
 
   // Verify sequences were added
@@ -918,7 +935,7 @@ TEST_F (AutomationTimelineDataCacheTest, AddAutomationSequenceAndFinalize)
 {
   // Add automation sequence and finalize
   cache->add_automation_sequence (
-    { units::samples (0), units::samples (256) }, automation_values);
+    { units::samples (0), units::samples (256) }, make_automation_entry ());
   cache->finalize_changes ();
 
   // Should have one automation sequence
@@ -929,29 +946,24 @@ TEST_F (AutomationTimelineDataCacheTest, AddAutomationSequenceAndFinalize)
   const auto &sequences = cache->automation_sequences ();
   EXPECT_EQ (sequences[0].start_sample, units::samples (0));
   EXPECT_EQ (sequences[0].end_sample, units::samples (256));
-  EXPECT_EQ (sequences[0].automation_values.size (), automation_values.size ());
+  EXPECT_EQ (sequences[0].segments.size (), 1);
 }
 
 TEST_F (AutomationTimelineDataCacheTest, ReversedIntervalThrows)
 {
   EXPECT_THROW (
     cache->add_automation_sequence (
-      { units::samples (200), units::samples (100) }, automation_values),
+      { units::samples (200), units::samples (100) }, make_automation_entry ()),
     std::invalid_argument);
 }
 
 TEST_F (AutomationTimelineDataCacheTest, AddMultipleAutomationSequences)
 {
-  // Create different automation values
-  std::vector<float> automation_values2 = {
-    1.0f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f, 0.0f
-  };
-
   // Add sequences at different positions
   cache->add_automation_sequence (
-    { units::samples (0), units::samples (128) }, automation_values);
+    { units::samples (0), units::samples (128) }, make_automation_entry ());
   cache->add_automation_sequence (
-    { units::samples (256), units::samples (384) }, automation_values2);
+    { units::samples (256), units::samples (384) }, make_automation_entry ());
   cache->finalize_changes ();
 
   // Should have two sequences sorted by start position
@@ -968,13 +980,13 @@ TEST_F (
   // Add sequences at different positions
   cache->add_automation_sequence (
     { units::samples (0), units::samples (128) },
-    automation_values); // Before removal interval
+    make_automation_entry ()); // Before removal interval
   cache->add_automation_sequence (
     { units::samples (200), units::samples (328) },
-    automation_values); // Inside removal interval
+    make_automation_entry ()); // Inside removal interval
   cache->add_automation_sequence (
     { units::samples (400), units::samples (528) },
-    automation_values); // After removal interval
+    make_automation_entry ()); // After removal interval
   cache->finalize_changes ();
 
   EXPECT_EQ (cache->automation_sequences ().size (), 3);
@@ -998,9 +1010,9 @@ TEST_F (
 {
   // Adjacent sequences: [0, 100) and [100, 200)
   cache->add_automation_sequence (
-    { units::samples (0), units::samples (100) }, automation_values);
+    { units::samples (0), units::samples (100) }, make_automation_entry ());
   cache->add_automation_sequence (
-    { units::samples (100), units::samples (200) }, automation_values);
+    { units::samples (100), units::samples (200) }, make_automation_entry ());
   cache->finalize_changes ();
 
   EXPECT_EQ (cache->automation_sequences ().size (), 2);
@@ -1023,9 +1035,9 @@ TEST_F (
   RemoveAutomationSequencesMatchingInterval_AdjacentReverse)
 {
   cache->add_automation_sequence (
-    { units::samples (0), units::samples (100) }, automation_values);
+    { units::samples (0), units::samples (100) }, make_automation_entry ());
   cache->add_automation_sequence (
-    { units::samples (100), units::samples (200) }, automation_values);
+    { units::samples (100), units::samples (200) }, make_automation_entry ());
   cache->finalize_changes ();
 
   EXPECT_EQ (cache->automation_sequences ().size (), 2);
@@ -1047,13 +1059,13 @@ TEST_F (AutomationTimelineDataCacheTest, AutomationSequenceSorting)
   // Add sequences in non-sequential order
   cache->add_automation_sequence (
     { units::samples (300), units::samples (428) },
-    automation_values); // Last
+    make_automation_entry ()); // Last
   cache->add_automation_sequence (
     { units::samples (100), units::samples (228) },
-    automation_values); // First
+    make_automation_entry ()); // First
   cache->add_automation_sequence (
     { units::samples (200), units::samples (328) },
-    automation_values); // Middle
+    make_automation_entry ()); // Middle
   cache->finalize_changes ();
 
   // Verify sequences are sorted by start position
@@ -1069,9 +1081,9 @@ TEST_F (AutomationTimelineDataCacheTest, CachedRangesSignalOnFinalize)
   QSignalSpy spy (cache.get (), &TimelineDataCache::cachedRangesChanged);
 
   cache->add_automation_sequence (
-    { units::samples (100), units::samples (200) }, automation_values);
+    { units::samples (100), units::samples (200) }, make_automation_entry ());
   cache->add_automation_sequence (
-    { units::samples (300), units::samples (400) }, automation_values);
+    { units::samples (300), units::samples (400) }, make_automation_entry ());
   cache->finalize_changes ();
 
   ASSERT_EQ (spy.count (), 1);
@@ -1099,7 +1111,7 @@ TEST_F (AutomationTimelineDataCacheTest, CachedRangesEmptyWhenNoContent)
 TEST_F (AutomationTimelineDataCacheTest, CachedRangesClearedOnClear)
 {
   cache->add_automation_sequence (
-    { units::samples (0), units::samples (256) }, automation_values);
+    { units::samples (0), units::samples (256) }, make_automation_entry ());
   cache->finalize_changes ();
 
   QSignalSpy spy (cache.get (), &TimelineDataCache::cachedRangesChanged);

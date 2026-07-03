@@ -72,39 +72,54 @@ public:
     std::optional<TimelineRange> timeline_range_ticks = std::nullopt);
 
   /**
-   * Serializes an Automation clip to sample-accurate automation values.
+   * @brief A single control point in a rendered automation curve.
    *
-   * The output buffer always represents the full clip length, with index 0
-   * corresponding to the clip's start position. Automation point positions
-   * are relative to the clip start.
+   * Positions are timeline ticks relative to the clip start (tick 0 = clip
+   * start), matching how @c serialize_to_sequence produces tick timestamps.
+   * Curve parameters come from the AutomationPoint whose curve segment drives
+   * the region starting at this point.
    *
-   * Values between automation points are interpolated using the curve algorithm
-   * defined on each automation point. The last automation point fills all
-   * remaining samples with its value.
-   *
-   * Playback behavior:
-   * - Starts from clip start (position 0 in output buffer)
-   * - Plays until loop end, then loops back to loop start
-   * - Automation points before loop start appear only once
-   * - Automation points within loop range (loop_start to loop_end) appear in
-   * each loop iteration
-   *
-   * Constraints (start/end) are global timeline positions and are applied by
-   * setting values outside the constraint range to -1.0. The output buffer size
-   * is always the full clip length, regardless of constraints.
-   *
-   * @param clip The Automation clip to serialize
-   * @param[out] values Output vector of normalized automation values
-   * (sample-accurate). Values are resized to the full clip length.
-   * Negative values (-1.0) indicate no automation present.
-   * @param start Optional global timeline start position in ticks for
-   * constraints
-   * @param end Optional global timeline end position in ticks for constraints
+   * The @c curve_origin_* fields carry the original AP-pair domain so that
+   * when a boundary point splits an AP pair (e.g. clip-start or loop-wrap),
+   * the consumer can evaluate the curve at the correct ratio within the
+   * original domain — not the truncated [boundary, next-AP] span.
    */
-  static void serialize_to_automation_values (
-    const AutomationClip        &clip,
-    std::vector<float>          &values,
-    std::optional<TimelineRange> timeline_range_ticks = std::nullopt)
+  struct RenderedAutomationPoint
+  {
+    dsp::TimelineTick            position;
+    float                        value;
+    dsp::CurveOptions::Algorithm curve_algo;
+    float                        curve_curviness;
+
+    /// The AP pair that drives the curve starting at this point.
+    /// For actual APs: origin_start == position, value_a == value.
+    /// For boundary interpolations: spans the full original AP-to-AP range.
+    dsp::TimelineTick curve_origin_start;
+    dsp::TimelineTick curve_origin_end;
+    float             curve_origin_value_a;
+    float             curve_origin_value_b;
+  };
+
+  /**
+   * @brief Serializes an AutomationClip to a list of control points in
+   * timeline-tick space (relative to clip start).
+   *
+   * Uses the same @c serialize_clip loop walk as MIDI/Audio/Chord. When a
+   * loop iteration boundary falls between two automation points, an
+   * interpolated control point is inserted so the curve resumes correctly.
+   *
+   * Points are sorted by position. Callers that need absolute timeline
+   * positions should add @c clip.position()->asTick() to each point's
+   * position (cf. @c MidiMessageSequence::addTimeToMessages).
+   *
+   * @param clip The automation clip to serialize.
+   * @param points Output vector of control points.
+   * @param timeline_range_ticks Currently unused.
+   */
+  static void serialize_to_points (
+    const AutomationClip                 &clip,
+    std::vector<RenderedAutomationPoint> &points,
+    std::optional<TimelineRange>          timeline_range_ticks = std::nullopt)
     [[clang::blocking]];
 
 private:
@@ -235,7 +250,7 @@ private:
 
   static void handle_automation_clip_range (
     const AutomationClip                         &clip,
-    std::vector<float>                           &values,
+    std::vector<RenderedAutomationPoint>         &points,
     std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
     dsp::TimelineTick                             segment_start);
 

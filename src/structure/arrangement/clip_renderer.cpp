@@ -6,6 +6,7 @@
 #include <fmt/std.h>
 
 #include "dsp/chord_descriptor.h"
+#include "dsp/curve.h"
 #include "dsp/tempo_warp_map.h"
 #include "dsp/time_warp_map.h"
 #include "dsp/timestretch_engine.h"
@@ -301,189 +302,6 @@ ClipRenderer::handle_chord_clip_range (
 }
 
 void
-ClipRenderer::handle_automation_clip_range (
-  const AutomationClip                         &clip,
-  std::vector<float>                           &values,
-  std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-  dsp::TimelineTick                             segment_start)
-{
-  const auto * warp = clip.contentWarp ();
-  const auto  &tempo_map = clip.get_tempo_map ();
-
-  // Absolute timeline tick and sample of the clip's content position 0.
-  // Positions from to_timeline() are relative to the clip start, so these
-  // are needed to convert back to absolute coordinates for tempo_map calls.
-  const auto clip_start_tl = warp->contentToTimeline (dsp::ContentTick{});
-  const auto clip_start_sample =
-    tempo_map.tick_to_samples (clip_start_tl).in (units::samples);
-
-  // Timeline positions of the segment boundaries (relative to clip start)
-  const auto tl_segment_start = warp->contentToTimeline (virtual_range.first);
-  const auto tl_segment_end = warp->contentToTimeline (virtual_range.second);
-  const auto segment_end = segment_start + (tl_segment_end - tl_segment_start);
-
-  const auto get_ap_virtual_position = [] (const auto * given_ap) {
-    assert (given_ap != nullptr);
-    return given_ap->position ()->asTick ();
-  };
-
-  // Helper: content position → relative timeline position within this loop
-  // segment
-  auto to_timeline = [&] (dsp::ContentTick ct) -> dsp::TimelineTick {
-    return segment_start + (warp->contentToTimeline (ct) - tl_segment_start);
-  };
-
-  // Helper: relative timeline tick → output buffer index.
-  auto rel_tick_to_buffer_idx = [&] (dsp::TimelineTick rel) -> size_t {
-    const auto abs_sample =
-      tempo_map.tick_to_samples_rounded (rel + clip_start_tl).in (units::samples);
-    return static_cast<size_t> (std::max (0.0, abs_sample - clip_start_sample));
-  };
-
-  // Helper lambda to interpolate values between two automation points.
-  // All tick parameters are relative to the clip start.
-  const auto interpolate_values =
-    [&] (
-      const AutomationPoint &prev_point, const AutomationPoint &next_point,
-      dsp::TimelineTick /*prev_point_start*/,
-      std::pair<dsp::TimelineTick, dsp::TimelineTick> range_in_output_buffer) {
-      const auto start_idx =
-        rel_tick_to_buffer_idx (range_in_output_buffer.first);
-      if (start_idx >= values.size ())
-        return;
-
-      // Absolute timeline ticks of the two automation points.
-      const auto tl_prev =
-        to_timeline (prev_point.position ()->asTick ()) + clip_start_tl;
-      const auto tl_next =
-        to_timeline (next_point.position ()->asTick ()) + clip_start_tl;
-      const auto tl_distance = tl_next - tl_prev;
-      assert (tl_distance > dsp::TimelineTick{});
-
-      const auto abs_range_start = range_in_output_buffer.first + clip_start_tl;
-      const auto abs_range_end = range_in_output_buffer.second + clip_start_tl;
-
-      const auto start_val = prev_point.value ();
-      const auto end_val = next_point.value ();
-      const auto diff = end_val - start_val;
-      const auto curve_up = start_val < end_val;
-
-      const auto segment_length_samples = static_cast<size_t> (
-        (tempo_map.tick_to_samples_rounded (abs_range_end)
-         - tempo_map.tick_to_samples_rounded (abs_range_start))
-          .in (units::samples));
-
-      if (
-        segment_length_samples > 0 && tl_distance > dsp::TimelineTick{}
-        && start_idx + segment_length_samples <= values.size ())
-        {
-          const bool is_linear_curve =
-            prev_point.curveOpts ()->algorithm ()
-              != dsp::CurveOptions::Algorithm::Pulse
-            && utils::math::floats_equal (
-              prev_point.curveOpts ()->curviness (), 0.0);
-
-          const double tl_prev_d = tl_prev.asDouble ();
-          const double tl_distance_d = tl_distance.asDouble ();
-
-          for (size_t i = 0; i < segment_length_samples; ++i)
-            {
-              // Convert this sample back to absolute timeline tick to get
-              // the correct tick-space ratio within the segment.
-              const double abs_sample_d =
-                clip_start_sample + static_cast<double> (start_idx + i);
-              const auto tick_at_sample =
-                tempo_map.samples_to_tick (units::samples (abs_sample_d));
-              double ratio =
-                (tick_at_sample.asDouble () - tl_prev_d) / tl_distance_d;
-              ratio = std::clamp (ratio, 0.0, 1.0);
-
-              if (is_linear_curve)
-                {
-                  values[start_idx + i] =
-                    start_val + diff * static_cast<float> (ratio);
-                }
-              else
-                {
-                  const auto curve_val =
-                    clip.get_normalized_value_in_curve (prev_point, ratio);
-                  const auto interpolated_val =
-                    curve_up
-                      ? start_val + (std::abs (diff) * curve_val)
-                      : end_val + (std::abs (diff) * curve_val);
-                  values[start_idx + i] = static_cast<float> (interpolated_val);
-                }
-            }
-        }
-    };
-
-  // Add automation for this loop segment
-  auto automation_points = clip.get_sorted_children_view ();
-  for (const auto &[index, ap] : utils::views::enumerate (automation_points))
-    {
-      const auto * prev_ap =
-        index > 0
-          ? *std::next (automation_points.begin (), static_cast<int> (index) - 1)
-          : nullptr;
-      const auto * next_ap =
-        index < (automation_points.size () - 1)
-          ? *std::next (automation_points.begin (), static_cast<int> (index) + 1)
-          : nullptr;
-
-      const auto ap_virtual_start = get_ap_virtual_position (ap);
-
-      // Whether the current automation point influences the current loop
-      // segment (i.e., participates in interpolation)
-      const auto ap_influences_segment = (ap_virtual_start >= virtual_range.first && ap_virtual_start <= virtual_range.second)
-      || (next_ap != nullptr && get_ap_virtual_position(next_ap) > virtual_range.first && get_ap_virtual_position(next_ap) <= virtual_range.second) || (prev_ap != nullptr && get_ap_virtual_position(prev_ap) >= virtual_range.first && get_ap_virtual_position(prev_ap) < virtual_range.second);
-
-      if (!ap_influences_segment)
-        continue;
-
-      const auto ap_start = to_timeline (ap_virtual_start);
-
-      // Handle interpolation from this point to next point
-      if (next_ap != nullptr)
-        {
-          const auto next_ap_virtual_start = get_ap_virtual_position (next_ap);
-
-          // If next point is within this virtual range, interpolate to it
-          if (
-            next_ap_virtual_start > virtual_range.first
-            && next_ap_virtual_start <= virtual_range.second)
-            {
-              const auto next_ap_start = to_timeline (next_ap_virtual_start);
-
-              interpolate_values (
-                *ap, *next_ap, ap_start,
-                std::make_pair (
-                  std::max (ap_start, segment_start), next_ap_start));
-            }
-          // If next point is beyond this virtual range, interpolate to range end
-          else if (next_ap_virtual_start > virtual_range.second)
-            {
-              interpolate_values (
-                *ap, *next_ap, ap_start,
-                std::make_pair (std::max (ap_start, segment_start), segment_end));
-            }
-        }
-      else
-        {
-          // This is the last point, fill remaining samples with its value
-          const auto start_idx = rel_tick_to_buffer_idx (ap_start);
-          const auto end_idx = rel_tick_to_buffer_idx (segment_end);
-
-          if (start_idx < values.size () && end_idx > start_idx)
-            {
-              utils::float_ranges::fill (
-                std::span (values).subspan (start_idx, end_idx - start_idx),
-                ap->value ());
-            }
-        }
-    }
-}
-
-void
 ClipRenderer::serialize_to_sequence (
   const MidiClip              &clip,
   juce::MidiMessageSequence   &events,
@@ -501,112 +319,149 @@ ClipRenderer::serialize_to_sequence (
   serialize_clip (clip, events, timeline_range_ticks);
 }
 
-/**
- * Serializes an Automation clip to sample-accurate automation values.
- */
-void
-ClipRenderer::serialize_to_automation_values (
-  const AutomationClip        &clip,
-  std::vector<float>          &values,
-  std::optional<TimelineRange> timeline_range_ticks)
+namespace
 {
-  const LoopParameters loop_params (clip);
-  const auto          &tempo_map = clip.get_tempo_map ();
 
-  if constexpr (CLIP_SERIALIZER_DEBUG)
+/// Result of evaluating the automation curve at a virtual tick position.
+struct EvalResult
+{
+  float                   value;
+  const AutomationPoint * driving_ap; // nullptr if before first AP
+  const AutomationPoint * next_ap;    // nullptr if at/after last AP
+};
+
+/// Evaluates the automation value at a virtual (content) tick position and
+/// returns the value, the AutomationPoint whose curve drives the segment, and
+/// the next AP that defines the end of the curve domain.
+EvalResult
+eval_at_virt_tick (const auto &sorted_points, dsp::ContentTick virt_tick)
+{
+  if (sorted_points.empty ())
+    return { 0.0f, nullptr, nullptr };
+
+  const auto tick_of = [] (const AutomationPoint * ap) {
+    return ap->position ()->asTick ();
+  };
+
+  const auto first_tick = tick_of (sorted_points.front ());
+  const auto last_tick = tick_of (sorted_points.back ());
+
+  // Before the first automation point: no automation applies.
+  if (virt_tick < first_tick)
+    return { sorted_points.front ()->value (), nullptr, nullptr };
+
+  // At or after the last AP: hold last value, no next AP.
+  if (virt_tick >= last_tick)
+    return { sorted_points.back ()->value (), sorted_points.back (), nullptr };
+
+  // lower_bound: first AP whose tick >= virt_tick.
+  // Guaranteed valid (not begin, not end) because we excluded < first and >=
+  // last.
+  auto it = std::ranges::lower_bound (sorted_points, virt_tick, {}, tick_of);
+
+  const auto * next_ap = *it;
+  const auto   next_tick = tick_of (next_ap);
+
+  // Exact match on an AP — return it directly so the boundary point carries
+  // the same curve params as the AP (avoids sort-order ambiguity).
+  if (next_tick == virt_tick)
     {
-      z_debug (
-        "serialize_automation_clip: timeline_range_ticks={}, values_size={}",
-        timeline_range_ticks, values.size ());
+      auto         after_it = it;
+      const auto * after =
+        (++after_it != sorted_points.end ()) ? *after_it : nullptr;
+      return { next_ap->value (), next_ap, after };
     }
 
-  // Always use the full clip length for the output buffer.
-  // contentToTimeline returns absolute positions, so subtract the
-  // clip start to get the relative length.
+  // Interpolation between prev_ap and next_ap.
+  const auto * prev_ap = *std::prev (it);
+  const auto   prev_tick = tick_of (prev_ap);
+  if (next_tick <= prev_tick)
+    return { prev_ap->value (), prev_ap, next_ap };
+
+  const double tick_span = (next_tick - prev_tick).asDouble ();
+  const double t =
+    std::clamp ((virt_tick - prev_tick).asDouble () / tick_span, 0.0, 1.0);
+
+  const auto val = dsp::evaluate_curve (
+    prev_ap->value (), next_ap->value (), prev_ap->curveOpts ()->algorithm (),
+    static_cast<float> (prev_ap->curveOpts ()->curviness ()), t);
+  return { val, prev_ap, next_ap };
+}
+
+} // anonymous namespace
+
+void
+ClipRenderer::handle_automation_clip_range (
+  const AutomationClip                         &clip,
+  std::vector<RenderedAutomationPoint>         &points,
+  std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
+  dsp::TimelineTick                             segment_start)
+{
   const auto * warp = clip.contentWarp ();
-  const auto   clip_start_tl = warp->contentToTimeline (dsp::ContentTick{});
-  const auto   clip_end_tl = warp->contentToTimeline (loop_params.clip_length);
-  const auto   clip_length_samples =
-    tempo_map.tick_to_samples_rounded (clip_end_tl)
-    - tempo_map.tick_to_samples_rounded (clip_start_tl);
+  const auto   tl_segment_start = warp->contentToTimeline (virtual_range.first);
 
-  // Resize the output buffer to the full clip length
-  values.resize (static_cast<size_t> (clip_length_samples.in (units::samples)));
+  // Helper: content position → timeline-tick-relative-to-clip-start.
+  auto to_timeline = [&] (dsp::ContentTick ct) -> dsp::TimelineTick {
+    return segment_start + (warp->contentToTimeline (ct) - tl_segment_start);
+  };
 
-  // Initialize with default value (-1.0)
-  utils::float_ranges::fill (values, -1);
+  // Helper: build a RenderedAutomationPoint from AP + curve-domain info.
+  auto make_point =
+    [&] (
+      const AutomationPoint * ap, const AutomationPoint * next_ap,
+      dsp::TimelineTick position, float value) {
+      const auto origin_start = to_timeline (ap->position ()->asTick ());
+      return RenderedAutomationPoint{
+        position,
+        value,
+        ap->curveOpts ()->algorithm (),
+        static_cast<float> (ap->curveOpts ()->curviness ()),
+        origin_start,
+        next_ap != nullptr
+          ? to_timeline (next_ap->position ()->asTick ())
+          : origin_start,
+        ap->value (),
+        next_ap != nullptr ? next_ap->value () : ap->value (),
+      };
+    };
 
-  if constexpr (CLIP_SERIALIZER_DEBUG)
+  const auto sorted_aps = clip.get_sorted_children_view ();
+  const auto vs = virtual_range.first;
+  const auto ve = virtual_range.second;
+
+  // Boundary point at segment start — skip when an AP already sits at vs
+  // (the AP loop below will emit it with identical params).
+  {
+    auto [val, driving_ap, next_ap] = eval_at_virt_tick (sorted_aps, vs);
+    if (driving_ap != nullptr && driving_ap->position ()->asTick () != vs)
+      points.push_back (make_point (driving_ap, next_ap, to_timeline (vs), val));
+  }
+
+  // Automation points within this loop segment.
+  for (auto ap_it = sorted_aps.begin (); ap_it != sorted_aps.end (); ++ap_it)
     {
-      z_debug (
-        "Processing automation clip with loop_start={}, loop_end={}, clip_length={}",
-        loop_params.loop_start, loop_params.loop_end, loop_params.clip_length);
+      const auto * ap = *ap_it;
+      const auto   ap_virt = ap->position ()->asTick ();
+      if (ap_virt < vs || ap_virt > ve)
+        continue;
+
+      auto         next_it = ap_it;
+      const auto * next_ap =
+        (++next_it != sorted_aps.end ()) ? *next_it : nullptr;
+
+      points.push_back (
+        make_point (ap, next_ap, to_timeline (ap_virt), ap->value ()));
     }
+}
 
-  // Use the serialize_clip template to handle the looping and automation data
-  serialize_clip (clip, values, timeline_range_ticks);
-
-  // Apply constraints in a second pass
-  if (timeline_range_ticks)
-    {
-      const auto clip_start = clip.position ()->asTick ();
-      const auto constraint_start = timeline_range_ticks->first;
-      const auto constraint_end = timeline_range_ticks->second;
-
-      if constexpr (CLIP_SERIALIZER_DEBUG)
-        {
-          z_debug (
-            "Applying constraints: clip_start={}, constraint_start={}, constraint_end={}",
-            clip_start, constraint_start, constraint_end);
-        }
-
-      // Calculate the sample range that corresponds to the constraint range
-      const auto constraint_start_offset =
-        std::max (dsp::TimelineTick{}, constraint_start - clip_start);
-      const auto constraint_end_offset =
-        std::max (dsp::TimelineTick{}, constraint_end - clip_start);
-
-      const auto constraint_start_samples = static_cast<size_t> (
-        tempo_map.tick_to_samples_rounded (constraint_start_offset)
-          .in (units::samples));
-      const auto constraint_end_samples = static_cast<size_t> (
-        tempo_map.tick_to_samples_rounded (constraint_end_offset)
-          .in (units::samples));
-
-      // Trim values outside the constraint range
-      for (size_t i = 0; i < values.size (); ++i)
-        {
-          if (i < constraint_start_samples || i >= constraint_end_samples)
-            {
-              values[i] = -1.0f;
-            }
-        }
-
-      if (CLIP_SERIALIZER_DEBUG)
-        {
-          z_debug (
-            "Trimmed values outside constraint range: start_samples={}, end_samples={}",
-            constraint_start_samples, constraint_end_samples);
-          // Log some values from the middle of the output buffer where we
-          // expect to see the automation values
-          z_debug ("Output buffer middle values (around 1148):");
-          for (
-            size_t i = 1140; i < std::min (size_t{ 1150 }, values.size ()); ++i)
-            {
-              z_debug ("  [{}] = {}", i, values[i]);
-            }
-        }
-
-      if constexpr (CLIP_SERIALIZER_DEBUG)
-        {
-          // Log some values from the output buffer to help debug
-          z_debug ("Output buffer first 10 values:");
-          for (size_t i = 0; i < std::min (size_t{ 10 }, values.size ()); ++i)
-            {
-              z_debug ("  [{}] = {}", i, values[i]);
-            }
-        }
-    }
+void
+ClipRenderer::serialize_to_points (
+  const AutomationClip                 &clip,
+  std::vector<RenderedAutomationPoint> &points,
+  std::optional<TimelineRange>          timeline_range_ticks)
+{
+  serialize_clip (clip, points, timeline_range_ticks);
+  std::ranges::sort (points, {}, &RenderedAutomationPoint::position);
 }
 
 /**

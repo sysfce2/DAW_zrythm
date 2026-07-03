@@ -423,6 +423,16 @@ protected:
 
 private:
   /**
+   * @brief Core automation evaluation logic, separated from access
+   * management so @ref process_automation_events can hoist the
+   * @c ScopedAccess out of the per-sample loop.
+   */
+  static std::optional<float> evaluate_at_sample (
+    const std::vector<dsp::AutomationTimelineDataCache::AutomationCacheEntry>
+                   &sequences,
+    units::sample_t sample_position) noexcept [[clang::nonblocking]];
+
+  /**
    * Caches an AutomationClip to the automation cache.
    */
   void cache_automation_clip (

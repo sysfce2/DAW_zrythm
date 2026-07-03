@@ -1553,78 +1553,67 @@ TEST_F (ClipRendererTest, SubRangeGrownTailMatchesFullRender)
 
 // ========== Automation Clip Tests ==========
 
+namespace
+{
+// Finds the first rendered automation point at (approximately) the given tick
+// position relative to clip start, or nullptr if none.
+const ClipRenderer::RenderedAutomationPoint *
+find_rendered_point_at (
+  const std::vector<ClipRenderer::RenderedAutomationPoint> &points,
+  double                                                    tick)
+{
+  for (const auto &p : points)
+    if (std::abs (p.position.asDouble () - tick) < 1e-6)
+      return &p;
+  return nullptr;
+}
+} // namespace
+
 TEST_F (ClipRendererTest, SerializeAutomationClipSimple)
 {
   // Add a simple automation point
   add_automation_point (0.5f, 100);
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Calculate the sample position of the automation point
-  const auto point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (100) })
-      .in (units::samples));
-
-  // Verify values before the first point are -1.0
-  for (size_t i = 0; i < point_samples; ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], -1.0f);
-    }
-
-  // Verify values from the first point onward are 0.5
-  for (size_t i = point_samples; i < values.size (); ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], 0.5f);
-    }
+  // No boundary point before the first AP — automation doesn't apply until the
+  // first point is reached.
+  ASSERT_EQ (points.size (), 1u);
+  EXPECT_NEAR (points[0].position.asDouble (), 100.0, 1e-6);
+  EXPECT_FLOAT_EQ (points[0].value, 0.5f);
 }
 
+// Two points: the rendered output is the set of control points (per-sample
+// interpolation is now the consumer's responsibility), so we verify the points
+// are emitted at the correct tick positions and values.
 TEST_F (ClipRendererTest, SerializeAutomationClipWithInterpolation)
 {
   // Add two automation points
   add_automation_point (0.0f, 50);
   add_automation_point (1.0f, 150);
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Verify interpolation
-  // First point at 50 ticks, second at 150 ticks
-  const auto first_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (50) })
-      .in (units::samples));
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (150) })
-      .in (units::samples));
-
-  // Before first point should be -1.0
-  for (size_t i = 0; i < first_point_samples; ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], -1.0f);
-    }
-
-  // After second point should be 1.0
-  for (size_t i = second_point_samples; i < values.size (); ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], 1.0f);
-    }
-
-  // Between points should interpolate
-  if (second_point_samples > first_point_samples + 1)
-    {
-      const size_t mid_point = (first_point_samples + second_point_samples) / 2;
-      EXPECT_GT (values[mid_point], 0.0f);
-      EXPECT_LT (values[mid_point], 1.0f);
-    }
+  // The two user points — no boundary at clip start since the first AP is at
+  // 50 (>0).
+  ASSERT_EQ (points.size (), 2u);
+  EXPECT_NEAR (points[0].position.asDouble (), 50.0, 1e-6);
+  EXPECT_FLOAT_EQ (points[0].value, 0.0f);
+  EXPECT_NEAR (points[1].position.asDouble (), 150.0, 1e-6);
+  EXPECT_FLOAT_EQ (points[1].value, 1.0f);
 }
 
 /**
- * @brief Verifies that linear automation interpolation respects tick-space
- * positions when tempo changes exist within the segment.
+ * @brief Verifies that rendered automation points land at the correct tick
+ * positions even when tempo changes exist within the segment.
+ *
+ * Point positions are emitted in tick space (relative to clip start), so a
+ * tempo change — which only warps the tick→sample mapping, not the ticks
+ * themselves — must not shift them.
  */
 TEST_F (ClipRendererTest, SerializeAutomationClipLinearWithTempoChange)
 {
@@ -1642,124 +1631,91 @@ TEST_F (ClipRendererTest, SerializeAutomationClipLinearWithTempoChange)
   add_automation_point (0.0f, 0);
   add_automation_point (1.0f, 3840);
 
-  std::vector<float> values;
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  ASSERT_FALSE (values.empty ());
+  ASSERT_GE (points.size (), 2u);
 
-  // Sample index of the tick midpoint (tick 1920).
-  const auto tick_midpoint_sample = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (1920) })
-      .in (units::samples));
+  // No two co-located points should disagree on curve params (would indicate
+  // a boundary/AP mismatch from eval_at_virt_tick returning the wrong AP).
+  for (size_t i = 0; i + 1 < points.size (); ++i)
+    {
+      if (
+        std::abs (
+          points[i].position.asDouble () - points[i + 1].position.asDouble ())
+        < 1e-6)
+        {
+          EXPECT_EQ (points[i].curve_algo, points[i + 1].curve_algo);
+          EXPECT_FLOAT_EQ (
+            points[i].curve_curviness, points[i + 1].curve_curviness);
+        }
+    }
 
-  ASSERT_LT (tick_midpoint_sample, values.size ());
+  // Start point at tick 0 with value 0.0.
+  const auto * start = find_rendered_point_at (points, 0.0);
+  ASSERT_NE (start, nullptr);
+  EXPECT_FLOAT_EQ (start->value, 0.0f);
 
-  // For a linear curve, the value at the tick midpoint must be 0.5.
-  EXPECT_NEAR (values[tick_midpoint_sample], 0.5f, 0.02f);
+  // End point exactly at tick 3840 with value 1.0 — the tempo change must not
+  // move it in tick space.
+  const auto * end = find_rendered_point_at (points, 3840.0);
+  ASSERT_NE (end, nullptr);
+  EXPECT_FLOAT_EQ (end->value, 1.0f);
+
+  // Every emitted point lies within the clip's tick span.
+  for (const auto &p : points)
+    {
+      EXPECT_GE (p.position.asDouble (), 0.0);
+      EXPECT_LE (p.position.asDouble (), 3840.0);
+    }
 }
 
 TEST_F (ClipRendererTest, SerializeAutomationClipWithLooping)
 {
-  // Add an automation point within the loop range
+  // One automation point inside the loop range.
   add_automation_point (0.7f, 75);
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  // Loop the clip 50..150 ticks (a 100-tick loop), total length 200 ticks.
+  automation_clip->setTrackBounds (false);
+  automation_clip->loopStartPosition ()->setTicks (50);
+  automation_clip->loopEndPosition ()->setTicks (150);
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  // With looping, the value should appear multiple times
-  // Loop range is 50-150 ticks (100 ticks)
-  // Clip length is 200 ticks, so we get 2 loops
-  // The point is at 75 ticks, which is within the loop range (50-150)
-  // So the first occurrence is at 75 ticks (relative to clip start)
-  const auto first_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (75) })
-      .in (units::samples));
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Check that values before the first point are -1.0
-  for (size_t i = 0; i < first_point_samples && i < values.size (); ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], -1.0f);
-    }
+  // The point at content tick 75 must be unwrapped to both 75 and 175
+  // (75 + one loop length of 100 ticks).
+  const auto * first_occurrence = find_rendered_point_at (points, 75.0);
+  ASSERT_NE (first_occurrence, nullptr);
+  EXPECT_FLOAT_EQ (first_occurrence->value, 0.7f);
 
-  // Check that the value appears at the right positions in both loops
-  EXPECT_FLOAT_EQ (values[first_point_samples], 0.7f);
+  const auto * second_occurrence = find_rendered_point_at (points, 175.0);
+  ASSERT_NE (second_occurrence, nullptr);
+  EXPECT_FLOAT_EQ (second_occurrence->value, 0.7f);
 
-  // Second occurrence should be one loop length later
-  // The loop starts at 50 ticks, so the second occurrence is at 75 + 100 = 175
-  // ticks
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (175) })
-      .in (units::samples));
-  if (second_point_samples < values.size ())
-    {
-      EXPECT_FLOAT_EQ (values[second_point_samples], 0.7f);
-    }
+  // No boundary at clip start 0 or at loop-wrap 150 — first AP is at 75,
+  // automation doesn't apply before the first point in the current segment.
+
+  // No point is emitted past the clip end (200 ticks).
+  for (const auto &p : points)
+    EXPECT_LE (p.position.asDouble (), 200.0);
 }
-
-#if 0
-TEST_F (ClipRendererTest, SerializeAutomationClipWithConstraints)
-{
-  // Add automation points
-  add_automation_point (0.0f, 50);
-  add_automation_point (1.0f, 150);
-
-  // Serialize with constraints
-  const double constraint_start = 100.0;
-  const double constraint_end = 200.0;
-
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
-
-  ClipRenderer::serialize_to_automation_values (
-    *automation_clip, values,
-    std::make_pair (
-      dsp::TimelineTick{ units::ticks (constraint_start) },
-      dsp::TimelineTick{ units::ticks (constraint_end) }));
-
-  // Verify the constraint range is respected
-  EXPECT_GT (values.size (), 0);
-
-  // The constraint starts at 100 ticks, which is between our two points
-  // The first point is at 150 ticks global (within constraint)
-  // The second point is at 250 ticks global (outside constraint)
-  // So we should see interpolated values but not the value 1.0
-  bool found_interpolated = false;
-  bool found_one = false;
-  for (float value : values)
-    {
-      if (value > 0.0f && value < 1.0f)
-        {
-          found_interpolated = true;
-        }
-      else if (value >= 0.999f) // Allow for floating point precision
-        {
-          found_one = true;
-        }
-    }
-  EXPECT_TRUE (found_interpolated);
-  EXPECT_FALSE (found_one); // The value 1.0 should be trimmed as it's outside
-                            // the constraint
-}
-#endif
 
 TEST_F (ClipRendererTest, SerializeAutomationClipEmpty)
 {
   // Don't add any automation points
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // All values should be -1.0 (no automation points)
-  for (float value : values)
-    {
-      EXPECT_FLOAT_EQ (value, -1.0f);
-    }
+  // With no automation points there is nothing to render.
+  EXPECT_TRUE (points.empty ());
 }
 
+// Verifies that curve parameters (algorithm + curviness) propagate from each
+// AutomationPoint into the rendered control point for the region it drives.
 TEST_F (ClipRendererTest, SerializeAutomationClipWithCurve)
 {
   // Add two automation points
@@ -1771,471 +1727,117 @@ TEST_F (ClipRendererTest, SerializeAutomationClipWithCurve)
   first_ap->curveOpts ()->setCurviness (0.5);
   first_ap->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Verify that the curve affects the interpolation
-  const auto first_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (50) })
-      .in (units::samples));
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (150) })
-      .in (units::samples));
+  // The first point carries its curve parameters (no boundary at clip start
+  // since the first AP is at 50 > 0).
+  const auto * first = find_rendered_point_at (points, 50.0);
+  ASSERT_NE (first, nullptr);
+  EXPECT_FLOAT_EQ (first->value, 0.0f);
+  EXPECT_EQ (first->curve_algo, dsp::CurveOptions::Algorithm::Exponent);
+  EXPECT_FLOAT_EQ (first->curve_curviness, 0.5f);
 
-  // Check a point in the middle - with exponential curve, it should be
-  // different from linear interpolation
-  if (second_point_samples > first_point_samples + 1)
-    {
-      const size_t mid_point = (first_point_samples + second_point_samples) / 2;
-      // With exponential curve and positive curviness, the value should be
-      // higher than linear interpolation (0.5)
-      EXPECT_GT (values[mid_point], 0.5f);
-      EXPECT_LT (values[mid_point], 1.0f);
-    }
+  // The second point carries its own (default) curve parameters.
+  const auto * second = find_rendered_point_at (points, 150.0);
+  ASSERT_NE (second, nullptr);
+  EXPECT_FLOAT_EQ (second->value, 1.0f);
+  EXPECT_EQ (second->curve_algo, dsp::CurveOptions::Algorithm::Exponent);
+  EXPECT_FLOAT_EQ (second->curve_curviness, 0.0f);
 }
-
-#if 0
-TEST_F (ClipRendererTest, SerializeAutomationClipNonOverlappingConstraints)
-{
-  // Add an automation point
-  add_automation_point (0.5f, 100);
-
-  // Use constraints that don't overlap the clip
-  const double constraint_start = -100.0;
-  const double constraint_end = -50.0;
-
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
-
-  ClipRenderer::serialize_to_automation_values (
-    *automation_clip, values,
-    std::make_pair (
-      dsp::TimelineTick{ units::ticks (constraint_start) },
-      dsp::TimelineTick{ units::ticks (constraint_end) }));
-
-  // All values should be -1.0 (no automation points in constraint)
-  for (float value : values)
-    {
-      EXPECT_FLOAT_EQ (value, -1.0f);
-    }
-}
-
-TEST_F (ClipRendererTest, SerializeAutomationClipLargeConstraints)
-{
-  // Add automation points
-  add_automation_point (0.0f, 50);
-  add_automation_point (1.0f, 150);
-
-  // Use large constraints that fully include the clip
-  const auto clip_pos = automation_clip->position ()->ticks ();
-  const auto clip_length = automation_clip->length ()->ticks ();
-
-  const double constraint_start = clip_pos - 50.0;
-  const double constraint_end = clip_pos + clip_length + 50.0;
-
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
-
-  ClipRenderer::serialize_to_automation_values (
-    *automation_clip, values,
-    std::make_pair (
-      dsp::TimelineTick{ units::ticks (constraint_start) },
-      dsp::TimelineTick{ units::ticks (constraint_end) }));
-
-  // Verify the constraint includes padding before and after the clip
-  EXPECT_GT (values.size (), 0);
-
-  // Calculate where the clip starts in the constraint
-  const auto clip_start_offset = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (50.0) }).in (units::samples));
-
-  // Before the clip should be -1.0
-  for (size_t i = 0; i < clip_start_offset && i < values.size (); ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], -1.0f);
-    }
-
-  // Within the clip should have the automation values
-  // (More detailed checks would require knowing exact sample positions)
-}
-#endif
 
 TEST_F (ClipRendererTest, SerializeAutomationClipWithClipStart)
 {
-  // Set clip start
+  // Play back from clip-start tick 25 (stop tracking bounds so it sticks).
+  automation_clip->setTrackBounds (false);
   automation_clip->clipStartPosition ()->setTicks (25);
 
-  // Add an automation point before clip start
-  add_automation_point (0.3f, 30);
+  // A point before the clip start (excluded from playback) and one after.
+  add_automation_point (0.0f, 10);
+  add_automation_point (1.0f, 50);
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // With clip start, the point before clip start should not appear
-  // The output should start from the clip start position
-  EXPECT_GT (values.size (), 0);
+  // The pre-clip-start point must not be rendered.
+  EXPECT_EQ (find_rendered_point_at (points, 10.0), nullptr);
 
-  // The values should reflect the clip start offset
-  // (Specific verification would depend on exact sample calculations)
+  // A boundary control point is emitted at the clip start (tick 25) carrying
+  // the interpolated value between the two surrounding points
+  // ((25-10)/(50-10) = 0.375 of the way from 0.0 to 1.0).
+  const auto * boundary = find_rendered_point_at (points, 25.0);
+  ASSERT_NE (boundary, nullptr);
+  EXPECT_NEAR (boundary->value, 0.375f, 0.01f);
+
+  // The in-range point appears at its own position.
+  const auto * after = find_rendered_point_at (points, 50.0);
+  ASSERT_NE (after, nullptr);
+  EXPECT_FLOAT_EQ (after->value, 1.0f);
 }
 
+// The clip ends before the second point: only the first point (and the
+// clip-start boundary) are rendered; the out-of-range point is dropped.
 TEST_F (ClipRendererTest, SerializeAutomationClipEndingMidCurve)
 {
-  // Create a clip that ends in the middle of a curve
-  // First point at 50 ticks, second point at 250 ticks (outside clip)
+  // First point at 50 ticks, second point at 250 ticks (beyond the clip end).
   add_automation_point (0.0f, 50);
   add_automation_point (1.0f, 250);
 
-  // Set clip length to 200 ticks (ends at 300 ticks, which is in the middle)
+  // Clip length 200 ticks: ends before the second point.
   automation_clip->length ()->setTicks (200);
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Calculate sample positions
-  const auto first_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (50) })
-      .in (units::samples));
-  const auto clip_end_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (300) })
-      .in (units::samples));
+  // The first point only (no clip-start boundary — first AP is at 50 > 0).
+  ASSERT_EQ (points.size (), 1u);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 50.0)->value, 0.0f);
 
-  // Before first point should be -1.0
-  for (size_t i = 0; i < first_point_samples && i < values.size (); ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], -1.0f);
-    }
-
-  // Values should interpolate from first point toward the second point
-  // The clip ends before reaching the second point
-  bool found_interpolation = false;
-  for (
-    size_t i = first_point_samples; i < values.size () && i < clip_end_samples;
-    ++i)
-    {
-      if (values[i] > 0.0f && values[i] < 1.0f)
-        {
-          found_interpolation = true;
-        }
-    }
-  EXPECT_TRUE (found_interpolation);
-
-  // The last value should be the interpolated value at the clip end
-  if (values.size () > 0)
-    {
-      const auto last_value = values[values.size () - 1];
-      EXPECT_GT (last_value, 0.0f); // Should be interpolated, not 0.0
-      EXPECT_LT (last_value, 1.0f); // Should be interpolated, not 1.0
-    }
+  // The point beyond the clip end is not rendered.
+  EXPECT_EQ (find_rendered_point_at (points, 250.0), nullptr);
 }
 
+// A looped clip whose tail ends mid-curve: the rendered points must unwrap the
+// loop, repeating the in-loop points at the correct offsets and inserting an
+// interpolated boundary control point at each loop wrap-around.
 TEST_F (ClipRendererTest, SerializeAutomationClipLoopedEndingMidCurve)
 {
-  // Create a looped clip that ends in the middle of a curve
   add_automation_point (0.0f, 25);  // Before loop
   add_automation_point (0.5f, 75);  // Inside loop
   add_automation_point (1.0f, 125); // Inside loop
   add_automation_point (
-    0.2f, 175); // After loop (won't be reached in first loop)
+    0.2f, 175); // After loop (outside the played region — never reached)
 
-  // Set up looping: loop from 50-150 ticks
+  // Loop 50..150 ticks (100-tick loop), total length 200 ticks.
   automation_clip->setTrackBounds (false);
   automation_clip->loopStartPosition ()->setTicks (50);
   automation_clip->loopEndPosition ()->setTicks (150);
-  // Set clip length to 200 ticks (ends at 200 ticks, which is in the middle
-  // of interpolating from 0.5 to 1.0 in the second loop)
-  // Playback order: 0-150 (first iteration), 50-200 (second loop, ends mid-curve)
   automation_clip->length ()->setTicks (200);
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Calculate sample positions
-  const auto first_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (25) })
-      .in (units::samples));
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (75) })
-      .in (units::samples));
-  const auto third_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (125) })
-      .in (units::samples));
-  const auto loop_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (150) })
-      .in (units::samples));
+  // First iteration (0..150): clip-start boundary, then the points up to 150.
+  // Second iteration (150..200): loop-wrap boundary at 150, then the in-loop
+  // point at 75 offset by one loop length -> 175.
+  // 5 points instead of 6 — no clip-start boundary since first AP is at 25 (>0).
+  ASSERT_EQ (points.size (), 5u);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 25.0)->value, 0.0f);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 75.0)->value, 0.5f);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 125.0)->value, 1.0f);
+  // Loop wrap-around boundary at 150: interpolated halfway between the point
+  // at 25 (0.0) and the point at 75 (0.5) -> 0.25.
+  EXPECT_NEAR (find_rendered_point_at (points, 150.0)->value, 0.25f, 0.01f);
+  // The point at 75 (0.5) repeats one loop length later at 175.
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 175.0)->value, 0.5f);
 
-  // Before first point should be -1.0
-  for (size_t i = 0; i < first_point_samples && i < values.size (); ++i)
-    {
-      EXPECT_FLOAT_EQ (values[i], -1.0f);
-    }
-
-  // Check that we have the expected values at each point
-  EXPECT_NEAR (values[first_point_samples], 0.0f, 0.001f);
-  EXPECT_NEAR (values[second_point_samples], 0.5f, 0.001f);
-  EXPECT_NEAR (values[third_point_samples], 1.0f, 0.001f);
-
-  // Check that values are interpolated from the third point (1.0) to the fourth
-  // point (0.2) in the first loop
-  const auto check_point_after_third_point = third_point_samples + 10;
-  // The value should be between 1.0 and 0.2 but closer to 1.0
-  const auto check_value_after_third_point =
-    values[check_point_after_third_point];
-  EXPECT_GT (
-    check_value_after_third_point, 0.2f); // Should be > 0.5 (closer to 1.0)
-  EXPECT_LT (check_value_after_third_point, 1.0f); // Should be < 1.0
-
-  // Check just before we loop we're still interpolating
-  const auto check_point_before_loop_back = loop_point_samples - 1;
-  const auto check_value_before_loop_back = values[check_point_before_loop_back];
-  EXPECT_GT (
-    check_value_before_loop_back, 0.2f); // Should be > 0.5 (closer to 1.0)
-  EXPECT_LT (
-    check_value_before_loop_back,
-    check_value_after_third_point); // Should be < the previous value since we
-                                    // are curving downwards
-
-  // Check the parts after looping back
-  const auto samples_after_looping_back = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (150) })
-      .in (units::samples));
-  const auto samples_after_looping_back_plus_25 = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (175) })
-      .in (units::samples));
-  const auto samples_at_end = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (200) })
-      .in (units::samples));
-  EXPECT_NEAR (values[samples_after_looping_back], 0.25f, 0.001f);
-  EXPECT_NEAR (values[samples_after_looping_back_plus_25], 0.5f, 0.001f);
-  EXPECT_NEAR (values[samples_at_end - 1], 0.75f, 0.001f);
-}
-
-// Parameterized test fixture for automation curves with different curviness
-// values
-class ClipRendererTestAutomationCurvesTest
-    : public ClipRendererTest,
-      public ::testing::WithParamInterface<float>
-{
-};
-
-// Test parameters for curviness values
-INSTANTIATE_TEST_SUITE_P (
-  CurvinessValues,
-  ClipRendererTestAutomationCurvesTest,
-  ::testing::Values (-0.5f, 0.0f, 0.5f));
-
-TEST_P (
-  ClipRendererTestAutomationCurvesTest,
-  SerializeAutomationClipCurveFromLowerToHigher)
-{
-  const float curviness = GetParam ();
-
-  // Create a curve that goes from a lower value to a higher value
-  // This is the specific case that was reported as broken
-  add_automation_point (0.2f, 50);  // Lower value at start
-  add_automation_point (0.8f, 150); // Higher value at end
-
-  // Set curve options on the first point to ensure we're testing the curve logic
-  auto * first_ap = automation_clip->get_children_view ()[0];
-  first_ap->curveOpts ()->setCurviness (curviness);
-  first_ap->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
-
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
-
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
-
-  // Calculate sample positions
-  const auto first_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (50) })
-      .in (units::samples));
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (150) })
-      .in (units::samples));
-
-  // Verify the first point has the correct value
-  if (first_point_samples < values.size ())
-    {
-      EXPECT_FLOAT_EQ (values[first_point_samples], 0.2f)
-        << "First automation point should have value 0.2f";
-    }
-
-  // Verify the second point has the correct value
-  if (second_point_samples < values.size ())
-    {
-      EXPECT_FLOAT_EQ (values[second_point_samples], 0.8f)
-        << "Second automation point should have value 0.8f";
-    }
-
-  // Check that interpolation is working correctly between the points
-  // The curve should go from lower (0.2) to higher (0.8)
-  if (second_point_samples > first_point_samples + 1 && values.size () > 0)
-    {
-      // Check a point in the middle of the curve
-      const size_t mid_point = (first_point_samples + second_point_samples) / 2;
-
-      // The value should be between 0.2 and 0.8
-      if (mid_point < values.size ())
-        {
-          const auto mid_value = values[mid_point];
-          EXPECT_GT (mid_value, 0.2f)
-            << "Middle value should be greater than start value (0.2f)";
-          EXPECT_LT (mid_value, 0.8f)
-            << "Middle value should be less than end value (0.8f)";
-
-          // Check curviness behavior
-          if (curviness > 0.0f)
-            {
-              // With positive curviness going from lower to higher, the curve
-              // should be above the linear interpolation line
-              EXPECT_GT (mid_value, 0.5f)
-                << "With positive curviness, the curve should be above linear interpolation (0.5f)";
-            }
-          else if (curviness < 0.0f)
-            {
-              // With negative curviness going from lower to higher, the curve
-              // should be below the linear interpolation line
-              EXPECT_LT (mid_value, 0.5f)
-                << "With negative curviness, the curve should be below linear interpolation (0.5f)";
-            }
-          else
-            {
-              // With zero curviness (linear), the value should be close to 0.5
-              EXPECT_NEAR (mid_value, 0.5f, 0.01f)
-                << "With zero curviness, the curve should be linear (0.5f)";
-            }
-        }
-
-      // Verify monotonic increase - values should always be increasing
-      // from the first point to the second point
-      bool  found_decrease = false;
-      float prev_value = values[first_point_samples];
-      for (
-        size_t i = first_point_samples + 1;
-        i < second_point_samples && i < values.size (); ++i)
-        {
-          if (values[i] < prev_value - 0.0001f) // Allow small floating point
-                                                // errors
-            {
-              found_decrease = true;
-              break;
-            }
-          prev_value = values[i];
-        }
-      EXPECT_FALSE (found_decrease)
-        << "Curve from lower to higher should be monotonically increasing";
-    }
-}
-
-TEST_P (
-  ClipRendererTestAutomationCurvesTest,
-  SerializeAutomationClipCurveFromHigherToLower)
-{
-  const float curviness = GetParam ();
-
-  // Create a curve that goes from a higher value to a lower value
-  // This tests the opposite direction to ensure both cases work
-  add_automation_point (0.8f, 50);  // Higher value at start
-  add_automation_point (0.2f, 150); // Lower value at end
-
-  // Set curve options on the first point
-  auto * first_ap = automation_clip->get_children_view ()[0];
-  first_ap->curveOpts ()->setCurviness (curviness);
-  first_ap->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
-
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
-
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
-
-  // Calculate sample positions
-  const auto first_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (50) })
-      .in (units::samples));
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (150) })
-      .in (units::samples));
-
-  // Verify the first point has the correct value
-  if (first_point_samples < values.size ())
-    {
-      EXPECT_FLOAT_EQ (values[first_point_samples], 0.8f)
-        << "First automation point should have value 0.8f";
-    }
-
-  // Verify the second point has the correct value
-  if (second_point_samples < values.size ())
-    {
-      EXPECT_FLOAT_EQ (values[second_point_samples], 0.2f)
-        << "Second automation point should have value 0.2f";
-    }
-
-  // Check that interpolation is working correctly between the points
-  // The curve should go from higher (0.8) to lower (0.2)
-  if (second_point_samples > first_point_samples + 1 && values.size () > 0)
-    {
-      // Check a point in the middle of the curve
-      const size_t mid_point = (first_point_samples + second_point_samples) / 2;
-
-      // The value should be between 0.2 and 0.8
-      if (mid_point < values.size ())
-        {
-          const auto mid_value = values[mid_point];
-          EXPECT_LT (mid_value, 0.8f)
-            << "Middle value should be less than start value (0.8f)";
-          EXPECT_GT (mid_value, 0.2f)
-            << "Middle value should be greater than end value (0.2f)";
-
-          // Check curviness behavior
-          if (curviness > 0.0f)
-            {
-              // With positive curviness going from higher to lower, the curve
-              // should be above the linear interpolation line
-              EXPECT_GT (mid_value, 0.5f)
-                << "With positive curviness, the curve should be above linear interpolation (0.5f)";
-            }
-          else if (curviness < 0.0f)
-            {
-              // With negative curviness going from higher to lower, the curve
-              // should be below the linear interpolation line
-              EXPECT_LT (mid_value, 0.5f)
-                << "With negative curviness, the curve should be below linear interpolation (0.5f)";
-            }
-          else
-            {
-              // With zero curviness (linear), the value should be close to 0.5
-              EXPECT_NEAR (mid_value, 0.5f, 0.01f)
-                << "With zero curviness, the curve should be linear (0.5f)";
-            }
-        }
-
-      // Verify monotonic decrease - values should always be decreasing
-      // from the first point to the second point
-      bool  found_increase = false;
-      float prev_value = values[first_point_samples];
-      for (
-        size_t i = first_point_samples + 1;
-        i < second_point_samples && i < values.size (); ++i)
-        {
-          if (values[i] > prev_value + 0.0001f) // Allow small floating point
-                                                // errors
-            {
-              found_increase = true;
-              break;
-            }
-          prev_value = values[i];
-        }
-      EXPECT_FALSE (found_increase)
-        << "Curve from higher to lower should be monotonically decreasing";
-    }
+  // The point at 175 (0.2) lies outside the played region and must not appear.
+  for (const auto &p : points)
+    EXPECT_NE (p.value, 0.2f);
 }
 
 TEST_F (ClipRendererTest, SerializeAutomationClipWithPointBeforeClip)
@@ -2244,124 +1846,69 @@ TEST_F (ClipRendererTest, SerializeAutomationClipWithPointBeforeClip)
   add_automation_point (0.2f, -25); // 25 ticks before clip start
   add_automation_point (0.8f, 150); // 150 ticks after clip start
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Calculate sample positions
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (150) })
-      .in (units::samples));
+  // The pre-clip point (tick -25) is outside the played region and is not
+  // emitted on its own...
+  EXPECT_EQ (find_rendered_point_at (points, -25.0), nullptr);
 
-  // The clip should start with an interpolated value from the first point
-  // Since the first point is at -25 ticks (before clip), and the second at 150
-  // ticks, the clip start (at 0 ticks relative to clip start) should
-  // have an interpolated value between 0.2 and 0.8
-  if (values.size () > 0)
-    {
-      const auto first_value = values[0];
-      // Should be interpolated, not the default -1.0
-      EXPECT_GT (first_value, 0.2f);
-      EXPECT_LT (first_value, 0.8f);
-    }
+  // ...but its influence is captured by the clip-start boundary control point,
+  // which holds the value interpolated between the two points at tick 0:
+  // (0 - (-25)) / (150 - (-25)) = 25/175 ~= 0.1429 of the way from 0.2 to 0.8.
+  ASSERT_EQ (points.size (), 2u);
+  EXPECT_NEAR (points[0].position.asDouble (), 0.0, 1e-6);
+  EXPECT_NEAR (points[0].value, 0.2857f, 0.01f);
 
-  // Values should continue interpolating toward the second point
-  bool found_interpolation = false;
-  for (size_t i = 0; i < values.size () && i < second_point_samples; ++i)
-    {
-      if (values[i] > 0.2f && values[i] < 0.8f)
-        {
-          found_interpolation = true;
-          break;
-        }
-    }
-  EXPECT_TRUE (found_interpolation);
-
-  // At the second point position, we should have the exact value
-  if (second_point_samples < values.size ())
-    {
-      EXPECT_FLOAT_EQ (values[second_point_samples], 0.8f);
-    }
+  // The in-range point is rendered at its own position with its exact value.
+  EXPECT_NEAR (points[1].position.asDouble (), 150.0, 1e-6);
+  EXPECT_FLOAT_EQ (points[1].value, 0.8f);
 }
 
+// Loop start falls in the middle of a curve. The rendered points must unwrap
+// the loop: in-loop points repeat at each iteration's offset, and an
+// interpolated boundary control point is emitted at every loop wrap-around.
 TEST_F (ClipRendererTest, SerializeAutomationClipLoopStartMidCurve)
 {
-  // Set up looping where loop start is in the middle of a curve
   add_automation_point (0.0f, 25);  // Before loop start
   add_automation_point (1.0f, 75);  // After loop start
   add_automation_point (0.5f, 125); // Inside loop
 
-  // Set up looping: loop from 50-150 ticks
+  // Loop 50..150 ticks (100-tick loop), total length 300 ticks (3 iterations).
   automation_clip->setTrackBounds (false);
   automation_clip->loopStartPosition ()->setTicks (50);
   automation_clip->loopEndPosition ()->setTicks (150);
-  // Set clip length to 300 ticks
   automation_clip->length ()->setTicks (300);
 
-  // First part (0-150 ticks):
-  // * 0-25 ticks: No automation (values should be -1.0)
-  // * 25-75 ticks: Interpolation from point at 25 ticks (0.0) to point at 75
-  // ticks (1.0)
-  // * 75-125 ticks: Interpolation from point at 75 ticks (1.0) to
-  // point at 125 ticks (0.5)
-  // * 125-150 ticks: Flat at point 125's value (0.5)
-  //
-  // Second part (150-250 ticks - looped segment):
-  // * 150-175 ticks: Interpolation from point at 25 ticks (0.0) to point at 75
-  // ticks (1.0) - but only the portion equivalent to 50-75 ticks
-  // * 175-225 ticks: Interpolation from point at 75 ticks (1.0) to point at 125
-  // ticks (0.5)
-  // * 225-250 ticks: Flat at point 125's value (0.5)
-  //
-  // Third part (250-300 ticks - looped segment):
-  // * 250-275 ticks: Interpolation from point at 25 ticks (0.0) to point at 75
-  // ticks (1.0) - but only the portion equivalent to 50-75 ticks
-  // * 275-300 ticks: Interpolation from point at 75 ticks (1.0) to point at 125
-  // ticks (0.5) - but only for the portion equivalent to 75-100 ticks
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
 
-  // Pass empty vector - the API will resize it appropriately
-  std::vector<float> values;
+  ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  ClipRenderer::serialize_to_automation_values (*automation_clip, values);
+  // Iteration 1 (0..150): boundary@0, points @25/@75/@125.
+  // Iteration 2 (150..250): wrap boundary@150, points @75->175, @125->225.
+  // Iteration 3 (250..300): wrap boundary@250, point @75->275.
+  // 8 points instead of 9 — no clip-start boundary since first AP is at 25 (>0).
+  ASSERT_EQ (points.size (), 8u);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 25.0)->value, 0.0f);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 75.0)->value, 1.0f);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 125.0)->value, 0.5f);
 
-  // Calculate sample positions
-  const auto loop_start_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (50) })
-      .in (units::samples));
-  const auto second_point_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (75) })
-      .in (units::samples));
-  const auto loop_length_samples = static_cast<size_t> (
-    tempo_map->tick_to_samples_rounded (dsp::TimelineTick{ units::ticks (100) })
-      .in (units::samples));
+  // Each loop wrap-around carries the interpolated value at the loop start
+  // (tick 50), halfway between the point at 25 (0.0) and the point at 75
+  // (1.0) -> 0.5.
+  EXPECT_NEAR (find_rendered_point_at (points, 150.0)->value, 0.5f, 0.01f);
+  EXPECT_NEAR (find_rendered_point_at (points, 250.0)->value, 0.5f, 0.01f);
 
-  // At loop start (50 ticks), we should have an interpolated value
-  // between the first point (0.0 at 25 ticks) and second point (1.0 at 75 ticks)
-  const auto loop_start_value = values[loop_start_samples];
-  // Should be interpolated between 0.0 and 1.0
-  EXPECT_NEAR (loop_start_value, 0.5f, 0.001f);
+  // The point at 75 (1.0) repeats in every loop iteration.
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 175.0)->value, 1.0f);
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 275.0)->value, 1.0f);
+  // The point at 125 (0.5) repeats in the second iteration.
+  EXPECT_FLOAT_EQ (find_rendered_point_at (points, 225.0)->value, 0.5f);
 
-  // In the second loop iteration, the loop start should have the same
-  // interpolated value (continuing the curve from the previous loop)
-  {
-    const auto loop_start_in_second_loop =
-      loop_start_samples + loop_length_samples;
-    const auto second_loop_value = values[loop_start_in_second_loop];
-    // Should be the same interpolated value as the first loop start
-    EXPECT_NEAR (second_loop_value, loop_start_value, 0.001f);
-  }
-
-  // The second point should appear at the correct position in both loops
-  {
-    // at 75 ticks
-    EXPECT_NEAR (values[second_point_samples], 1.0f, 0.001f);
-    const auto second_point_in_second_loop =
-      second_point_samples + loop_length_samples;
-
-    // at 175 ticks
-    EXPECT_NEAR (values[second_point_in_second_loop], 1.0f, 0.001f);
-  }
+  // No point is emitted past the clip end (300 ticks).
+  for (const auto &p : points)
+    EXPECT_LE (p.position.asDouble (), 300.0);
 }
 
 // ========== MIDI Control Event Rendering Tests ==========
@@ -2482,6 +2029,48 @@ TEST_F (ClipRendererTest, SerializeMidiNotesAndControlEventsTogether)
   EXPECT_TRUE (events.getEventPointer (0)->message.isNoteOn ());
   EXPECT_TRUE (events.getEventPointer (1)->message.isController ());
   EXPECT_TRUE (events.getEventPointer (2)->message.isNoteOff ());
+}
+
+// When an automation point sits exactly at the loop-start position, the
+// second loop iteration starts playback at that AP's virtual tick. Because
+// eval_at_virt_tick returns the AP directly on an exact match (no synthetic
+// boundary point is emitted), the only rendered point at the loop-wrap
+// position is the AP itself, which naturally carries its own curve params.
+TEST_F (ClipRendererTest, SerializeAutomationClipPointAtLoopBoundary)
+{
+  add_automation_point (0.0f, 25);
+  add_automation_point (0.5f, 50); // exactly at loop_start
+  add_automation_point (1.0f, 100);
+
+  // Give AP1 and AP2 different curviness so we can tell them apart.
+  auto * ap1 = automation_clip->get_children_view ()[0];
+  ap1->curveOpts ()->setCurviness (0.8);
+  ap1->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
+
+  auto * ap2 = automation_clip->get_children_view ()[1];
+  ap2->curveOpts ()->setCurviness (-0.3);
+  ap2->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
+
+  automation_clip->setTrackBounds (false);
+  automation_clip->loopStartPosition ()->setTicks (50);
+  automation_clip->loopEndPosition ()->setTicks (150);
+
+  std::vector<ClipRenderer::RenderedAutomationPoint> points;
+  ClipRenderer::serialize_to_points (*automation_clip, points);
+
+  // The second loop iteration starts at virtual tick 50 (= AP2's position).
+  // The playback position of the loop wrap is 150 (first iteration length).
+  // Every rendered point at position 150 must carry AP2's curve params.
+  for (const auto &p : points)
+    {
+      if (std::abs (p.position.asDouble () - 150.0) < 1e-6)
+        {
+          EXPECT_FLOAT_EQ (p.curve_curviness, -0.3f)
+            << "Loop-boundary point at 150 should carry AP2's curve (curviness "
+               "-0.3), got "
+            << p.curve_curviness;
+        }
+    }
 }
 
 } // namespace zrythm::structure::arrangement

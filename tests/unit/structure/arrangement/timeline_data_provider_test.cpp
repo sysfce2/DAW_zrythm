@@ -2078,4 +2078,260 @@ TEST_F (TimelineDataProviderTest, BasicFunctionality)
     *tempo_map_, empty_automation_clips, range);
 }
 
+// === Linear tempo ramp tests ===
+
+// When the tempo map contains a linear ramp (not just step changes), the
+// tick→sample mapping within the ramp region is logarithmic, not linear.
+// The RT reader assumes linear sample→ratio mapping within each segment.
+// Without subdividing ramp regions, this produces incorrect automation values.
+//
+// This test creates a 120→60 BPM linear ramp and a 0.0→1.0 automation ramp
+// over the same span, then checks that RT-evaluated values match the
+// ground-truth values computed via the tempo map's exact conversion.
+TEST_F (TimelineDataProviderTest, AutomationProviderLinearTempoRampEvaluation)
+{
+  // Linear tempo ramp: 120 → 60 BPM over ticks 0–3840 (2 beats at 960 PPQN).
+  tempo_map_->add_tempo_event (
+    units::ticks (0), units::bpm (120.0), dsp::TempoMap::CurveType::Linear);
+  tempo_map_->add_tempo_event (
+    units::ticks (3840), units::bpm (60.0), dsp::TempoMap::CurveType::Constant);
+
+  // Automation clip: linear 0.0 → 1.0 spanning the tempo ramp.
+  auto * clip = create_automation_clip (0.0, 3840.0, 0.0f, 1.0f);
+
+  std::vector<const AutomationClip *> clips{ clip };
+  utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
+  automation_provider_->generate_automation_events (*tempo_map_, clips, range);
+
+  const auto start_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (0.0) });
+  const auto end_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (3840.0) });
+  const auto total_samples =
+    static_cast<double> ((end_sample - start_sample).in (units::samples));
+
+  // Evaluate at 10%, 30%, 50%, 70%, 90% of the sample-space span.
+  // Skip the exact endpoints (0% and 100%) to avoid boundary edge cases.
+  for (const auto frac : { 0.1, 0.3, 0.5, 0.7, 0.9 })
+    {
+      const auto sample_pos =
+        start_sample
+        + units::samples (static_cast<int64_t> (frac * total_samples));
+
+      // Ground truth: convert sample → tick → ratio, then evaluate linear.
+      const auto tick_at_sample =
+        tempo_map_
+          ->samples_to_tick (
+            units::samples (static_cast<double> (sample_pos.in (units::samples))))
+          .asDouble ();
+      const auto expected_ratio = std::clamp (tick_at_sample / 3840.0, 0.0, 1.0);
+      const auto expected_value = static_cast<float> (expected_ratio);
+
+      const auto rt_value_opt =
+        automation_provider_->get_automation_value_rt (sample_pos);
+      ASSERT_TRUE (rt_value_opt.has_value ())
+        << "No value at sample fraction " << frac;
+
+      EXPECT_NEAR (rt_value_opt.value (), expected_value, 0.002f)
+        << "At sample fraction " << frac << " (sample "
+        << sample_pos.in (units::samples) << ", tick " << tick_at_sample
+        << "): expected " << expected_value << ", got " << rt_value_opt.value ();
+    }
+}
+
+// Verifies that the RT reader correctly evaluates a non-linear (Exponent)
+// automation curve with positive curviness ascending from 0.0 to 1.0.
+// At the midpoint, the curve value should differ from the linear 0.5 and
+// match the output of CurveOptions::get_normalized_y.
+TEST_F (TimelineDataProviderTest, AutomationProviderExponentCurveAscending)
+{
+  auto * clip = create_automation_clip (0.0, 3840.0, 0.0f, 1.0f);
+  auto * first_ap = clip->get_children_view ()[0];
+  first_ap->curveOpts ()->setCurviness (0.5);
+  first_ap->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
+
+  std::vector<const AutomationClip *> clips{ clip };
+  utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
+  automation_provider_->generate_automation_events (*tempo_map_, clips, range);
+
+  const auto mid_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (1920.0) });
+
+  const auto rt_val = automation_provider_->get_automation_value_rt (mid_sample);
+  ASSERT_TRUE (rt_val.has_value ());
+
+  // Ground truth: CurveOptions at ratio 0.5, start_higher=false (ascending).
+  const double expected_curve =
+    dsp::CurveOptions (0.5, dsp::CurveOptions::Algorithm::Exponent)
+      .get_normalized_y (0.5, false);
+  const float expected = static_cast<float> (expected_curve);
+
+  EXPECT_NEAR (rt_val.value (), expected, 0.01f);
+  // Positive-curviness exponent curve should be above linear at midpoint.
+  EXPECT_GT (rt_val.value (), 0.5f);
+}
+
+// Same but descending from 1.0 to 0.0 with positive curviness.
+TEST_F (TimelineDataProviderTest, AutomationProviderExponentCurveDescending)
+{
+  auto * clip = create_automation_clip (0.0, 3840.0, 1.0f, 0.0f);
+  auto * first_ap = clip->get_children_view ()[0];
+  first_ap->curveOpts ()->setCurviness (0.5);
+  first_ap->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
+
+  std::vector<const AutomationClip *> clips{ clip };
+  utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
+  automation_provider_->generate_automation_events (*tempo_map_, clips, range);
+
+  const auto mid_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (1920.0) });
+
+  const auto rt_val = automation_provider_->get_automation_value_rt (mid_sample);
+  ASSERT_TRUE (rt_val.has_value ());
+
+  // Ground truth: CurveOptions at ratio 0.5, start_higher=true (descending).
+  const double expected_curve =
+    dsp::CurveOptions (0.5, dsp::CurveOptions::Algorithm::Exponent)
+      .get_normalized_y (0.5, true);
+  const float expected = static_cast<float> (expected_curve);
+
+  EXPECT_NEAR (rt_val.value (), expected, 0.01f);
+  // Positive-curviness exponent descending curve should be above linear at
+  // midpoint (the curve bulges toward the higher starting value).
+  EXPECT_GT (rt_val.value (), 0.5f);
+}
+
+// Verifies that Pulse algorithm produces a step function, not a linear ramp.
+// A Pulse curve from 0.0 to 1.0 should stay at 0.0 until the midpoint, then
+// jump to 1.0.
+TEST_F (TimelineDataProviderTest, AutomationProviderPulseCurveStep)
+{
+  auto * clip = create_automation_clip (0.0, 3840.0, 0.0f, 1.0f);
+  auto * first_ap = clip->get_children_view ()[0];
+  first_ap->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Pulse);
+
+  std::vector<const AutomationClip *> clips{ clip };
+  utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
+  automation_provider_->generate_automation_events (*tempo_map_, clips, range);
+
+  // At 40% of the span — before the step.
+  const auto before_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (1536.0) }); // 0.4 * 3840
+  const auto before_val =
+    automation_provider_->get_automation_value_rt (before_sample);
+  ASSERT_TRUE (before_val.has_value ());
+  EXPECT_NEAR (before_val.value (), 0.0f, 0.01f)
+    << "Pulse should hold start value before midpoint";
+
+  // At 60% of the span — after the step.
+  const auto after_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (2304.0) }); // 0.6 * 3840
+  const auto after_val =
+    automation_provider_->get_automation_value_rt (after_sample);
+  ASSERT_TRUE (after_val.has_value ());
+  EXPECT_NEAR (after_val.value (), 1.0f, 0.01f)
+    << "Pulse should hold end value after midpoint";
+}
+
+// Verifies that the region before the first automation point yields nullopt
+// (no automation applied until the first point is reached).
+TEST_F (TimelineDataProviderTest, AutomationProviderNoAutomationBeforeFirstPoint)
+{
+  // Clip at tick 0, but first automation point at tick 100.
+  auto * clip = create_automation_clip (0.0, 3840.0, 0.0f, 1.0f);
+
+  // Move the first point to tick 100 (relative to clip start).
+  auto * first_ap = clip->get_children_view ()[0];
+  first_ap->position ()->setTicks (100.0);
+
+  std::vector<const AutomationClip *> clips{ clip };
+  utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
+  automation_provider_->generate_automation_events (*tempo_map_, clips, range);
+
+  // At tick 50 — before the first automation point.
+  const auto before_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (50.0) });
+  const auto before_val =
+    automation_provider_->get_automation_value_rt (before_sample);
+  EXPECT_FALSE (before_val.has_value ())
+    << "No automation should apply before the first point";
+
+  // At tick 200 — after the first automation point, should have a value.
+  const auto after_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (200.0) });
+  const auto after_val =
+    automation_provider_->get_automation_value_rt (after_sample);
+  ASSERT_TRUE (after_val.has_value ());
+}
+
+// When a clip-start boundary splits an AP pair, the curve must be evaluated
+// against the ORIGINAL AP pair domain, not the truncated [boundary, AP] span.
+// Otherwise non-linear curves (Exponent, etc.) are reshaped incorrectly.
+//
+// Setup: AP@0 = 0.0, AP@3840 = 1.0, Exponent curviness 0.5, clip-start = 1920.
+// At tick 2880 the correct ratio within [0, 3840] is 0.75.  The bug evaluates
+// against [1920, 3840] (ratio 0.5), distorting the exponential bulge.
+TEST_F (
+  TimelineDataProviderTest,
+  AutomationProviderExponentCurveReshapedByClipStartBoundary)
+{
+  auto * clip = create_automation_clip (0.0, 3840.0, 0.0f, 1.0f);
+
+  auto * ap1 = clip->get_children_view ()[0];
+  ap1->curveOpts ()->setCurviness (0.5);
+  ap1->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Exponent);
+
+  // Clip-start splits the AP pair [0, 3840] at tick 1920.
+  clip->setTrackBounds (false);
+  clip->clipStartPosition ()->setTicks (1920);
+
+  std::vector<const AutomationClip *> clips{ clip };
+  utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
+  automation_provider_->generate_automation_events (*tempo_map_, clips, range);
+
+  // Evaluate at tick 2880 (= 75% of [0, 3840]).
+  const auto eval_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (2880.0) });
+  const auto rt_val =
+    automation_provider_->get_automation_value_rt (eval_sample);
+  ASSERT_TRUE (rt_val.has_value ());
+
+  // Ground truth: curve evaluated at ratio 0.75 within the original [0, 3840].
+  const double expected_curve =
+    dsp::CurveOptions (0.5, dsp::CurveOptions::Algorithm::Exponent)
+      .get_normalized_y (0.75, false);
+
+  EXPECT_NEAR (rt_val.value (), static_cast<float> (expected_curve), 0.01f)
+    << "At tick 2880 (ratio 0.75 of original domain): expected "
+    << expected_curve << ", got " << rt_val.value ();
+}
+
+// Logarithmic curves at default curviness (0.0) are NOT linear — the
+// algorithm clamps s to 0.01 and computes a genuine log curve. The RT reader
+// must not short-circuit near-zero curviness to linear for Logarithmic.
+TEST_F (TimelineDataProviderTest, AutomationProviderLogarithmicCurvinessZero)
+{
+  auto * clip = create_automation_clip (0.0, 3840.0, 0.0f, 1.0f);
+  auto * ap1 = clip->get_children_view ()[0];
+  ap1->curveOpts ()->setAlgorithm (dsp::CurveOptions::Algorithm::Logarithmic);
+
+  std::vector<const AutomationClip *> clips{ clip };
+  utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
+  automation_provider_->generate_automation_events (*tempo_map_, clips, range);
+
+  const auto mid_sample = tempo_map_->tick_to_samples_rounded (
+    dsp::TimelineTick{ units::ticks (1920.0) });
+  const auto rt_val = automation_provider_->get_automation_value_rt (mid_sample);
+  ASSERT_TRUE (rt_val.has_value ());
+
+  // Ground truth: Logarithmic at curviness 0, ratio 0.5 — NOT 0.5 (linear).
+  const double expected = dsp::evaluate_curve (
+    0.0f, 1.0f, dsp::CurveOptions::Algorithm::Logarithmic, 0.0f, 0.5);
+
+  EXPECT_NEAR (rt_val.value (), static_cast<float> (expected), 0.005f)
+    << "Logarithmic curviness 0 should produce a log curve, not linear";
+  EXPECT_NE (rt_val.value (), 0.5f)
+    << "Logarithmic at curviness 0 must not linearize to 0.5 at midpoint";
+}
+
 } // namespace zrythm::structure::arrangement

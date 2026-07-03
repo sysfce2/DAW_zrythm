@@ -218,19 +218,17 @@ AutomationTimelineDataCache::remove_sequences_matching_interval (
 
 void
 AutomationTimelineDataCache::add_automation_sequence (
-  IntervalType              interval,
-  const std::vector<float> &automation_values)
+  IntervalType           interval,
+  AutomationCacheEntry &&entry)
 {
   const auto [start_sample, end_sample] = interval;
 
   validate_interval (interval);
 
-  AutomationCacheEntry entry;
-  entry.automation_values = automation_values;
   entry.start_sample = start_sample;
   entry.end_sample = end_sample;
 
-  automation_sequences_.push_back (entry);
+  automation_sequences_.push_back (std::move (entry));
 }
 
 void
