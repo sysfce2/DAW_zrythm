@@ -4,8 +4,11 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "gui/qquick/waveform_canvas_item.h"
+#include "gui/qquick/waveform_canvas_renderer.h"
+#include "structure/arrangement/audio_clip.h"
 
 #include <QPointer>
 #include <QtQmlIntegration/qqmlintegration.h>
@@ -46,6 +49,37 @@ public:
 
   QObject * tempoMap () const { return tempo_map_; }
   void      setTempoMap (QObject * tempoMap);
+
+  /// Only wrap when the clip is actually looped. Non-looped clips may still
+  /// have default loop positions, which would cause false wrapping.
+  bool hasLoop () const
+  {
+    return audio_clip_ != nullptr && audio_clip_->looped ()
+           && last_snapshot_.loop_end_samples > last_snapshot_.loop_start_samples;
+  }
+
+  /// Sample-space offset of the loop-start position relative to clip start
+  /// (content-space, not buffer-space).
+  int64_t loopStartFrame () const { return last_snapshot_.loop_start_samples; }
+  int64_t loopEndFrame () const { return last_snapshot_.loop_end_samples; }
+  int64_t clipStartFrame () const { return last_snapshot_.clip_start_samples; }
+
+  /// Where the loop region begins in the serialized buffer. The buffer layout
+  /// is: [intro: clip_start→loop_end] [loop: loop_start→loop_end] repeated.
+  /// So the loop region starts at frame (loop_end - clip_start).
+  int64_t loopRegionBufferStart () const
+  {
+    return last_snapshot_.loop_end_samples - last_snapshot_.clip_start_samples;
+  }
+
+  /// Computes a per-pixel frame mapping that accounts for the tempo map's
+  /// non-linear tick-to-sample conversion. Called by the renderer during
+  /// synchronize() so the waveform visually aligns with what plays at each
+  /// timeline position.
+  std::vector<int64_t> computeTimelineFrameMapping (
+    int   canvas_width,
+    qreal reference_width,
+    qreal reference_x) const;
 
 Q_SIGNALS:
   void audioClipChanged ();

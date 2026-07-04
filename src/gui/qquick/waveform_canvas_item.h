@@ -3,8 +3,9 @@
 
 #pragma once
 
+#include "gui/qquick/clip_canvas_item_base.h"
+
 #include <QColor>
-#include <QtCanvasPainter/qcanvaspainteritem.h>
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
@@ -20,7 +21,7 @@ class WaveformCanvasRenderer;
  * Subclasses provide the buffer data by calling setAudioBuffer().
  * Not registered to QML — use a derived class for QML usage.
  */
-class WaveformCanvasItem : public QCanvasPainterItem
+class WaveformCanvasItem : public ClipCanvasItemBase
 {
   Q_OBJECT
 

@@ -9,7 +9,7 @@ namespace zrythm::gui::qquick
 {
 
 MidiClipCanvasItem::MidiClipCanvasItem (QQuickItem * parent)
-    : QCanvasPainterItem (parent)
+    : ClipCanvasItemBase (parent)
 {
   setFillColor (Qt::transparent);
   setAlphaBlending (true);

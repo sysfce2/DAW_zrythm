@@ -8,7 +8,7 @@ namespace zrythm::gui::qquick
 {
 
 WaveformCanvasItem::WaveformCanvasItem (QQuickItem * parent)
-    : QCanvasPainterItem (parent)
+    : ClipCanvasItemBase (parent)
 {
   setFillColor (Qt::transparent);
   setAlphaBlending (true);

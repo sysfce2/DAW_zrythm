@@ -5,18 +5,18 @@
 
 #include <vector>
 
+#include "gui/qquick/clip_canvas_item_base.h"
 #include "structure/arrangement/automation_clip.h"
 
 #include <QColor>
 #include <QPointer>
-#include <QtCanvasPainter/qcanvaspainteritem.h>
 
 namespace zrythm::gui::qquick
 {
 
 class AutomationClipCanvasRenderer;
 
-class AutomationClipCanvasItem : public QCanvasPainterItem
+class AutomationClipCanvasItem : public ClipCanvasItemBase
 {
   Q_OBJECT
   QML_NAMED_ELEMENT (AutomationClipCanvas)

@@ -41,14 +41,14 @@ private:
      * Unused for the last point (no segment after it).
      */
     dsp::CurveOptions curve_opts;
-    /** Whether the next point's value is lower than this one's. */
-    bool start_higher;
   };
 
   std::vector<CachedControlPoint> points_;
   QColor                          curve_color_;
   float                           canvas_width_ = 0.0f;
   float                           canvas_height_ = 0.0f;
+  qreal                           reference_width_ = 0;
+  qreal                           reference_x_ = 0;
 };
 
 } // namespace zrythm::gui::qquick

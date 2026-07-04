@@ -11,10 +11,12 @@ target_sources(zrythm_gui_lib
       automation_clip_canvas_item.h
       automation_clip_canvas_renderer.h
       audio_clip_waveform_canvas_item.h
-      chord_clip_segmenter.h
+      chord_clip_canvas_item.h
+      chord_clip_canvas_renderer.h
       chord_highlighter.h
       chord_row_list_model.h
       chord_suggestion_provider.h
+      clip_canvas_item_base.h
       fade_overlay_canvas_item.h
       fade_overlay_canvas_renderer.h
       grid_line_computer.h
@@ -41,7 +43,8 @@ target_sources(zrythm_gui_lib
     automation_clip_canvas_item.cpp
     automation_clip_canvas_renderer.cpp
     audio_clip_waveform_canvas_item.cpp
-    chord_clip_segmenter.cpp
+    chord_clip_canvas_item.cpp
+    chord_clip_canvas_renderer.cpp
     chord_highlighter.cpp
     chord_row_list_model.cpp
     chord_suggestion_provider.cpp

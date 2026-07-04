@@ -144,6 +144,21 @@ AudioClipWaveformCanvasItem::handle_property_change ()
   notifyBufferChanged ();
 }
 
+std::vector<int64_t>
+AudioClipWaveformCanvasItem::computeTimelineFrameMapping (
+  int   canvas_width,
+  qreal reference_width,
+  qreal reference_x) const
+{
+  if (audio_clip_ == nullptr)
+    return {};
+
+  const auto &tempo_map = audio_clip_->get_tempo_map ();
+  return compute_timeline_frame_mapping (
+    canvas_width, reference_width, reference_x, tempo_map,
+    audio_clip_->position ()->asTick (), audio_clip_->timelineLengthTicks ());
+}
+
 void
 AudioClipWaveformCanvasItem::setAudioClip (
   structure::arrangement::AudioClip * clip)

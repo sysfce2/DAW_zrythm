@@ -11,6 +11,7 @@
 #include "gui/qquick/automation_clip_canvas_renderer.h"
 #include "structure/arrangement/arranger_object_all.h"
 #include "structure/arrangement/clip.h"
+#include "structure/arrangement/loop_segment_iterator.h"
 
 namespace zrythm::gui::qquick
 {
@@ -18,14 +19,11 @@ namespace zrythm::gui::qquick
 namespace
 {
 
-/// Evaluates the automation value at a virtual tick position and returns the
-/// value along with the AutomationPoint whose curve segment drives that
-/// position (nullptr if before the first point).
+/// Evaluates the automation value at a virtual content-tick position and
+/// returns the value along with the AutomationPoint whose curve segment
+/// drives that position (nullptr if before the first point).
 auto
-eval_at_virt_tick (
-  const auto                                   &sorted_points,
-  const structure::arrangement::AutomationClip &clip,
-  double                                        virt_tick)
+eval_at_virt_tick (const auto &sorted_points, dsp::ContentTick virt_tick)
   -> std::pair<float, const structure::arrangement::AutomationPoint *>
 {
   using AP = structure::arrangement::AutomationPoint;
@@ -34,11 +32,11 @@ eval_at_virt_tick (
     return { 0.0f, nullptr };
 
   const auto tick_of = [] (const AP * ap) {
-    return ap->position ()->asTick ().asDouble ();
+    return ap->position ()->asTick ();
   };
 
-  const double first_tick = tick_of (sorted_points.front ());
-  const double last_tick = tick_of (sorted_points.back ());
+  const auto first_tick = tick_of (sorted_points.front ());
+  const auto last_tick = tick_of (sorted_points.back ());
 
   if (virt_tick <= first_tick)
     return { sorted_points.front ()->value (), sorted_points.front () };
@@ -52,24 +50,18 @@ eval_at_virt_tick (
   const auto * prev_ap = *std::prev (it);
   const auto * next_ap = *it;
 
-  const double prev_tick = tick_of (prev_ap);
-  const double next_tick = tick_of (next_ap);
+  const auto prev_tick = tick_of (prev_ap);
+  const auto next_tick = tick_of (next_ap);
   if (next_tick <= prev_tick)
     return { prev_ap->value (), prev_ap };
 
   double t = (virt_tick - prev_tick) / (next_tick - prev_tick);
   t = std::clamp (t, 0.0, 1.0);
 
-  const double curve_val = clip.get_normalized_value_in_curve (*prev_ap, t);
-
-  const double diff =
-    static_cast<double> (next_ap->value ())
-    - static_cast<double> (prev_ap->value ());
-  const double val =
-    (diff > 0.0)
-      ? prev_ap->value () + std::abs (diff) * curve_val
-      : next_ap->value () + std::abs (diff) * curve_val;
-  return { static_cast<float> (val), prev_ap };
+  const float val = dsp::evaluate_curve (
+    prev_ap->value (), next_ap->value (), prev_ap->curveOpts ()->algorithm (),
+    static_cast<float> (prev_ap->curveOpts ()->curviness ()), t);
+  return { val, prev_ap };
 }
 
 } // anonymous namespace
@@ -82,6 +74,8 @@ AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
   curve_color_ = canvas_item->curveColor ();
   canvas_width_ = static_cast<float> (canvas_item->width ());
   canvas_height_ = static_cast<float> (canvas_item->height ());
+  reference_width_ = canvas_item->effectiveReferenceWidth ();
+  reference_x_ = canvas_item->referenceX ();
 
   points_.clear ();
 
@@ -97,42 +91,36 @@ AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
   if (clip->length () == nullptr)
     return;
   const auto clip_ticks = clip->length ()->asTick ();
-  if (clip_ticks.asDouble () <= 0.0)
+  if (clip_ticks <= dsp::ContentTick{})
     return;
 
   const auto loop_start_ticks = clip->loopStartPosition ()->asTick ();
   const auto loop_end_ticks = clip->loopEndPosition ()->asTick ();
   const auto clip_start_ticks = clip->clipStartPosition ()->asTick ();
-  const auto loop_length_ticks = max (
-    dsp::ContentTick{ units::ticks (0.0) }, loop_end_ticks - loop_start_ticks);
 
   const double clip_ticks_d = clip_ticks.asDouble ();
-
-  // Loop-walk: identical segment structure to MidiClipCanvasRenderer.
-  auto loop_seg_virt_start = clip_start_ticks;
-  auto loop_seg_virt_end = loop_end_ticks;
-  auto loop_seg_abs_start = dsp::ContentTick{ units::ticks (0.0) };
-  auto loop_seg_abs_end = loop_end_ticks - clip_start_ticks;
-  if (loop_seg_abs_end > clip_ticks)
-    {
-      const auto diff = loop_seg_abs_end - clip_ticks;
-      loop_seg_virt_end = loop_seg_virt_end - diff;
-      loop_seg_abs_end = loop_seg_abs_end - diff;
-    }
+  const double px_per_tick =
+    static_cast<double> (reference_width_) / clip_ticks_d;
+  // Extend beyond clip_ticks for looped clips or during loop-resize of a
+  // non-looped clip (loopPreview).
+  const auto display_end_tick =
+    (clip->looped () || canvas_item->loopPreview ())
+      ? max (
+          clip_ticks,
+          dsp::ContentTick{ units::ticks (
+            (static_cast<double> (canvas_width_) + reference_x_) / px_per_tick) })
+      : clip_ticks;
+  const double display_end_ticks_d = display_end_tick.asDouble ();
 
   const auto add_point =
     [&] (
       double abs_tick_d, float val,
       const structure::arrangement::AutomationPoint * source_ap) {
-      if (abs_tick_d < 0.0 || abs_tick_d > clip_ticks_d)
+      if (abs_tick_d < 0.0 || abs_tick_d > display_end_ticks_d)
         return;
 
-      const auto * next_ap =
-        (source_ap != nullptr) ? clip->get_next_ap (*source_ap, true) : nullptr;
-
       CachedControlPoint cp;
-      const double       norm_x = abs_tick_d / clip_ticks_d;
-      cp.px = static_cast<float> (norm_x * canvas_width_);
+      cp.px = static_cast<float> (abs_tick_d * px_per_tick - reference_x_);
       cp.val = val;
       cp.py = canvas_height_ * (1.0f - val);
       cp.curve_opts =
@@ -141,22 +129,21 @@ AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
               source_ap->curveOpts ()->curviness (),
               source_ap->curveOpts ()->algorithm ())
           : dsp::CurveOptions{};
-      cp.start_higher =
-        (next_ap != nullptr) ? next_ap->value () < source_ap->value () : false;
 
       points_.push_back (std::move (cp));
     };
 
-  while (loop_seg_abs_start < clip_ticks)
-    {
-      const double vs = loop_seg_virt_start.asDouble ();
-      const double ve = loop_seg_virt_end.asDouble ();
-      const double as = loop_seg_abs_start.asDouble ();
+  structure::arrangement::for_each_loop_segment (
+    clip_start_ticks, loop_start_ticks, loop_end_ticks, display_end_tick,
+    [&] (const structure::arrangement::LoopSegment &seg) {
+      const double vs = seg.virt_start.asDouble ();
+      const double ve = seg.virt_end.asDouble ();
+      const double as = seg.abs_start.asDouble ();
 
       // Add a boundary point at the segment start so curves that cross loop
       // boundaries stay continuous.
       {
-        auto [val, src_ap] = eval_at_virt_tick (sorted_points, *clip, vs);
+        auto [val, src_ap] = eval_at_virt_tick (sorted_points, seg.virt_start);
         if (src_ap != nullptr)
           add_point (as, val, src_ap);
       }
@@ -171,23 +158,7 @@ AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
           const double abs_tick = as + (ap_virt - vs);
           add_point (abs_tick, ap->value (), ap);
         }
-
-      const auto current_len = loop_seg_abs_end - loop_seg_abs_start;
-      if (current_len.asDouble () <= 0.0)
-        break;
-
-      loop_seg_virt_start = loop_start_ticks;
-      loop_seg_virt_end = loop_end_ticks;
-      loop_seg_abs_start = loop_seg_abs_start + current_len;
-      loop_seg_abs_end = loop_seg_abs_end + loop_length_ticks;
-
-      if (loop_seg_abs_end > clip_ticks)
-        {
-          const auto diff = loop_seg_abs_end - clip_ticks;
-          loop_seg_virt_end = loop_seg_virt_end - diff;
-          loop_seg_abs_end = loop_seg_abs_end - diff;
-        }
-    }
+    });
 
   std::ranges::sort (points_, {}, &CachedControlPoint::px);
 }
@@ -244,13 +215,10 @@ AutomationClipCanvasRenderer::paint (QCanvasPainter * painter)
           const int steps = std::clamp (static_cast<int> (seg_px * 0.5f), 4, 64);
           for (int s = 1; s <= steps; ++s)
             {
-              const float  t = static_cast<float> (s) / steps;
-              const double curve_val =
-                a.curve_opts.get_normalized_y (t, a.start_higher);
-              const float val =
-                (diff > 0.0f)
-                  ? a.val + std::abs (diff) * curve_val
-                  : b.val + std::abs (diff) * curve_val;
+              const float t = static_cast<float> (s) / steps;
+              const float val = dsp::evaluate_curve (
+                a.val, b.val, a.curve_opts.algo_,
+                static_cast<float> (a.curve_opts.curviness_), t);
               sample_xs.push_back (a.px + t * seg_px);
               sample_ys.push_back (canvas_height_ * (1.0f - val));
             }

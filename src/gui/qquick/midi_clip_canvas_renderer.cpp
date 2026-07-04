@@ -8,6 +8,7 @@
 #include "gui/qquick/midi_clip_canvas_item.h"
 #include "gui/qquick/midi_clip_canvas_renderer.h"
 #include "structure/arrangement/arranger_object_all.h"
+#include "structure/arrangement/loop_segment_iterator.h"
 
 namespace zrythm::gui::qquick
 {
@@ -20,6 +21,8 @@ MidiClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
   note_color_ = canvas_item->noteColor ();
   canvas_width_ = static_cast<float> (canvas_item->width ());
   canvas_height_ = static_cast<float> (canvas_item->height ());
+  reference_width_ = canvas_item->effectiveReferenceWidth ();
+  reference_x_ = canvas_item->referenceX ();
 
   note_rects_.clear ();
 
@@ -38,7 +41,7 @@ MidiClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
   if (clip->length () == nullptr)
     return;
   const auto clip_ticks = clip->length ()->asTick ();
-  if (clip_ticks.asDouble () <= 0.0)
+  if (clip_ticks <= dsp::ContentTick{})
     return;
 
   auto pitch_range = get_pitch_range (children);
@@ -64,49 +67,44 @@ MidiClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
   const auto loop_start_ticks = clip->loopStartPosition ()->asTick ();
   const auto loop_end_ticks = clip->loopEndPosition ()->asTick ();
   const auto clip_start_ticks = clip->clipStartPosition ()->asTick ();
-  const auto loop_length_ticks = max (
-    dsp::ContentTick{ units::ticks (0.0) }, loop_end_ticks - loop_start_ticks);
 
-  auto loop_seg_virt_start = clip_start_ticks;
-  auto loop_seg_virt_end = loop_end_ticks;
-  auto loop_seg_abs_start = dsp::ContentTick{ units::ticks (0.0) };
-  auto loop_seg_abs_end = loop_end_ticks - clip_start_ticks;
-  if (loop_seg_abs_end > clip_ticks)
-    {
-      const auto diff = loop_seg_abs_end - clip_ticks;
-      loop_seg_virt_end = loop_seg_virt_end - diff;
-      loop_seg_abs_end = loop_seg_abs_end - diff;
-    }
+  // Density: use referenceWidth (constant during drag) so notes don't stretch.
+  // display_end_tick extends beyond clip_ticks when the canvas is wider than
+  // the reference content (drag preview), for looped clips or during
+  // loop-resize of a non-looped clip (loopPreview).
+  const double px_per_tick =
+    static_cast<double> (reference_width_) / clip_ticks.asDouble ();
+  const auto display_end_tick =
+    (clip->looped () || canvas_item->loopPreview ())
+      ? max (
+          clip_ticks,
+          dsp::ContentTick{ units::ticks (
+            (static_cast<double> (canvas_width_) + reference_x_) / px_per_tick) })
+      : clip_ticks;
 
   note_rects_.reserve (children.size () * 4);
 
-  while (loop_seg_abs_start < clip_ticks)
-    {
+  structure::arrangement::for_each_loop_segment (
+    clip_start_ticks, loop_start_ticks, loop_end_ticks, display_end_tick,
+    [&] (const structure::arrangement::LoopSegment &seg) {
       for (const auto * note : children)
         {
           const auto note_virt_start = note->position ()->asTick ();
           const auto note_virt_end =
             note_virt_start + note->length ()->asTick ();
 
-          if (
-            note_virt_start >= loop_seg_virt_end
-            || note_virt_end <= loop_seg_virt_start)
+          if (note_virt_start >= seg.virt_end || note_virt_end <= seg.virt_start)
             continue;
 
           const auto note_abs_start = max (
-            loop_seg_abs_start,
-            loop_seg_abs_start + (note_virt_start - loop_seg_virt_start));
-          const auto note_abs_end = min (
-            loop_seg_abs_end,
-            loop_seg_abs_start + (note_virt_end - loop_seg_virt_start));
+            seg.abs_start, seg.abs_start + (note_virt_start - seg.virt_start));
+          const auto note_abs_end =
+            min (seg.abs_end, seg.abs_start + (note_virt_end - seg.virt_start));
 
-          const double relative_start =
-            note_abs_start.asDouble () / clip_ticks.asDouble ();
-          const double relative_end =
-            note_abs_end.asDouble () / clip_ticks.asDouble ();
-          const auto x = static_cast<float> (relative_start * canvas_width_);
+          const auto x = static_cast<float> (
+            note_abs_start.asDouble () * px_per_tick - reference_x_);
           const auto w = static_cast<float> (
-            (relative_end - relative_start) * canvas_width_);
+            (note_abs_end - note_abs_start).asDouble () * px_per_tick);
           const int  relative_pitch = (note->pitch () - min_pitch) + 1;
           const auto y = static_cast<float> (
             canvas_height_ - (relative_pitch * midi_note_height));
@@ -118,23 +116,7 @@ MidiClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
               .height = static_cast<float> (midi_note_height),
               .muted = note->mute ()->muted () });
         }
-
-      const auto current_len = loop_seg_abs_end - loop_seg_abs_start;
-      if (current_len.asDouble () <= 0.0)
-        break;
-
-      loop_seg_virt_start = loop_start_ticks;
-      loop_seg_virt_end = loop_end_ticks;
-      loop_seg_abs_start = loop_seg_abs_start + current_len;
-      loop_seg_abs_end = loop_seg_abs_end + loop_length_ticks;
-
-      if (loop_seg_abs_end > clip_ticks)
-        {
-          const auto diff = loop_seg_abs_end - clip_ticks;
-          loop_seg_virt_end = loop_seg_virt_end - diff;
-          loop_seg_abs_end = loop_seg_abs_end - diff;
-        }
-    }
+    });
 }
 
 void

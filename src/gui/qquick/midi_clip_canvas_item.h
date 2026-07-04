@@ -5,9 +5,10 @@
 
 #include <vector>
 
+#include "gui/qquick/clip_canvas_item_base.h"
+
 #include <QColor>
 #include <QPointer>
-#include <QtCanvasPainter/qcanvaspainteritem.h>
 
 namespace zrythm::structure::arrangement
 {
@@ -19,7 +20,7 @@ namespace zrythm::gui::qquick
 
 class MidiClipCanvasRenderer;
 
-class MidiClipCanvasItem : public QCanvasPainterItem
+class MidiClipCanvasItem : public ClipCanvasItemBase
 {
   Q_OBJECT
   QML_NAMED_ELEMENT (MidiClipCanvas)

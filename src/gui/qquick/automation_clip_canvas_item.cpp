@@ -11,7 +11,7 @@ namespace zrythm::gui::qquick
 {
 
 AutomationClipCanvasItem::AutomationClipCanvasItem (QQuickItem * parent)
-    : QCanvasPainterItem (parent)
+    : ClipCanvasItemBase (parent)
 {
   setFillColor (Qt::transparent);
   setAlphaBlending (true);
