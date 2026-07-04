@@ -19,6 +19,22 @@ ChordClip::ChordClip (
 }
 
 void
+ChordClip::shift_all_children (dsp::ContentTick delta)
+{
+  ArrangerObjectOwner<ChordObject>::add_ticks_to_children (delta);
+}
+
+std::optional<dsp::ContentTick>
+ChordClip::first_child_position () const
+{
+  const auto &children =
+    ArrangerObjectOwner<ChordObject>::get_children_vector ();
+  if (!children.empty ())
+    return children.front ().get_object_as<ChordObject> ()->position ()->asTick ();
+  return std::nullopt;
+}
+
+void
 init_from (
   ChordClip             &obj,
   const ChordClip       &other,

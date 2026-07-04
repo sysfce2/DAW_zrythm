@@ -110,6 +110,25 @@ AutomationClip::get_next_ap (const AutomationPoint &ap, bool check_positions) co
 }
 
 void
+AutomationClip::shift_all_children (dsp::ContentTick delta)
+{
+  ArrangerObjectOwner<AutomationPoint>::add_ticks_to_children (delta);
+}
+
+std::optional<dsp::ContentTick>
+AutomationClip::first_child_position () const
+{
+  const auto &children =
+    ArrangerObjectOwner<AutomationPoint>::get_children_vector ();
+  if (!children.empty ())
+    return children.front ()
+      .get_object_as<AutomationPoint> ()
+      ->position ()
+      ->asTick ();
+  return std::nullopt;
+}
+
+void
 init_from (
   AutomationClip        &obj,
   const AutomationClip  &other,

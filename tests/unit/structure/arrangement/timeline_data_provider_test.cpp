@@ -2269,8 +2269,9 @@ TEST_F (TimelineDataProviderTest, AutomationProviderNoAutomationBeforeFirstPoint
 // Otherwise non-linear curves (Exponent, etc.) are reshaped incorrectly.
 //
 // Setup: AP@0 = 0.0, AP@3840 = 1.0, Exponent curviness 0.5, clip-start = 1920.
-// At tick 2880 the correct ratio within [0, 3840] is 0.75.  The bug evaluates
-// against [1920, 3840] (ratio 0.5), distorting the exponential bulge.
+// The intro segment plays virt [1920, 3840) → delta [0, 1920). A boundary
+// point at delta 0 carries origin [-1920, 1920] (= content [0, 3840]). At
+// tick 960, the ratio within the origin domain is (960-(-1920))/(3840) = 0.75.
 TEST_F (
   TimelineDataProviderTest,
   AutomationProviderExponentCurveReshapedByClipStartBoundary)
@@ -2289,9 +2290,10 @@ TEST_F (
   utils::ExpandableTickRange          range (std::pair (0.0, 9600.0));
   automation_provider_->generate_automation_events (*tempo_map_, clips, range);
 
-  // Evaluate at tick 2880 (= 75% of [0, 3840]).
+  // Evaluate at tick 960 (within the intro segment). The boundary point's
+  // origin maps this to ratio 0.75 of [0, 3840].
   const auto eval_sample = tempo_map_->tick_to_samples_rounded (
-    dsp::TimelineTick{ units::ticks (2880.0) });
+    dsp::TimelineTick{ units::ticks (960.0) });
   const auto rt_val =
     automation_provider_->get_automation_value_rt (eval_sample);
   ASSERT_TRUE (rt_val.has_value ());
@@ -2302,7 +2304,7 @@ TEST_F (
       .get_normalized_y (0.75, false);
 
   EXPECT_NEAR (rt_val.value (), static_cast<float> (expected_curve), 0.01f)
-    << "At tick 2880 (ratio 0.75 of original domain): expected "
+    << "At tick 960 (ratio 0.75 of original domain): expected "
     << expected_curve << ", got " << rt_val.value ();
 }
 

@@ -57,16 +57,11 @@ ResizeArrangerObjectsCommand::ResizeArrangerObjectsCommand (
                 units::ticks (obj->fadeRange ()->endOffset ()->ticks ());
             }
 
-          if constexpr (
-            utils::is_derived_from_template_v<
-              structure::arrangement::ArrangerObjectOwner, ObjectT>)
+          if constexpr (structure::arrangement::ClipObject<ObjectT>)
             {
-              auto children = obj->get_children_view ();
-              if (!children.empty ())
-                {
-                  state.firstChildTicks =
-                    units::ticks ((*children.begin ())->position ()->ticks ());
-                }
+              const auto first = obj->first_child_position ();
+              if (first.has_value ())
+                state.firstChildTicks = first->asQuantity ();
             }
         },
         convert_to_variant_qobj<
@@ -123,19 +118,16 @@ ResizeArrangerObjectsCommand::undo ()
             }
 
           // Restore children positions
-          if constexpr (
-            utils::is_derived_from_template_v<
-              structure::arrangement::ArrangerObjectOwner, ObjectT>)
+          if constexpr (structure::arrangement::ClipObject<ObjectT>)
             {
               if (original_state.firstChildTicks.has_value ())
                 {
-                  auto       children = obj->get_children_view ();
-                  const auto child_delta =
-                    original_state.firstChildTicks->in (units::ticks)
-                    - (*children.begin ())->position ()->ticks ();
-                  for (const auto &child : children)
+                  const auto first = obj->first_child_position ();
+                  if (first.has_value ())
                     {
-                      child->position ()->addTicks (child_delta);
+                      const auto child_delta =
+                        *original_state.firstChildTicks - first->asQuantity ();
+                      obj->shift_all_children (dsp::ContentTick{ child_delta });
                     }
                 }
             }
@@ -165,27 +157,23 @@ ResizeArrangerObjectsCommand::redo ()
           dsp::ContentTick        content_delta{ units::ticks (delta_) };
           if constexpr (structure::arrangement::ClipObject<ObjectT>)
             {
-              auto * warp = obj->contentWarp ();
-              if (!warp->is_identity ())
-                {
-                  const auto clip_start = obj->position ()->asTick ();
-                  const dsp::ContentTick old_content_len =
-                    obj->length ()->asTick ();
+              auto *     warp = obj->contentWarp ();
+              const auto clip_start = obj->position ()->asTick ();
+              const dsp::ContentTick old_content_len = obj->length ()->asTick ();
 
-                  if (direction_ == ResizeDirection::FromEnd)
-                    {
-                      const dsp::TimelineTick old_tl_end =
-                        warp->contentToTimeline (old_content_len);
-                      const dsp::ContentTick new_content_len =
-                        warp->timelineToContent (old_tl_end + tl_delta);
-                      content_delta = new_content_len - old_content_len;
-                    }
-                  else
-                    {
-                      content_delta =
-                        warp->timelineToContent (clip_start + tl_delta)
-                        - warp->timelineToContent (clip_start);
-                    }
+              if (direction_ == ResizeDirection::FromEnd)
+                {
+                  const dsp::TimelineTick old_tl_end =
+                    warp->contentToTimeline (old_content_len);
+                  const dsp::ContentTick new_content_len =
+                    warp->timelineToContent (old_tl_end + tl_delta);
+                  content_delta = new_content_len - old_content_len;
+                }
+              else
+                {
+                  content_delta =
+                    warp->timelineToContent (clip_start + tl_delta)
+                    - warp->timelineToContent (clip_start);
                 }
             }
           const double content_delta_val = content_delta.asDouble ();
@@ -220,14 +208,11 @@ ResizeArrangerObjectsCommand::redo ()
 
                         // Adjust children positions accordingly
                         if constexpr (
-                          utils::is_derived_from_template_v<
-                            structure::arrangement::ArrangerObjectOwner, ObjectT>)
+                          structure::arrangement::ClipObject<ObjectT>)
                           {
-                            for (const auto &child : obj->get_children_view ())
-                              {
-                                child->position ()->addTicks (
-                                  -content_delta_val);
-                              }
+                            obj->shift_all_children (
+                              dsp::ContentTick{
+                                units::ticks (-content_delta_val) });
                           }
                       }
                     else // FromEnd
@@ -309,16 +294,11 @@ ResizeArrangerObjectsCommand::redo ()
                         else if (new_clip_start_pos < 0.0)
                           {
                             if constexpr (
-                              utils::is_derived_from_template_v<
-                                structure::arrangement::ArrangerObjectOwner,
-                                ObjectT>)
+                              structure::arrangement::ClipObject<ObjectT>)
                               {
-                                for (
-                                  const auto &child : obj->get_children_view ())
-                                  {
-                                    child->position ()->addTicks (
-                                      -new_clip_start_pos);
-                                  }
+                                obj->shift_all_children (
+                                  dsp::ContentTick{
+                                    units::ticks (-new_clip_start_pos) });
                               }
 
                             obj->loopStartPosition ()->addTicks (

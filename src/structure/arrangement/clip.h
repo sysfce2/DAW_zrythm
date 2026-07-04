@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: (C) 2026 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #pragma once
@@ -86,6 +86,18 @@ public:
   {
     length ()->setTicks (ticks);
   }
+
+  /**
+   * @brief Timeline delta-tick positions of each loop wrap point.
+   *
+   * Returns positions relative to the clip start, suitable for placing
+   * loop markers in a clip view.
+   *
+   * @param displayEndTicks Upper bound (exclusive) for returned positions,
+   *                        typically max(timelineLengthTicks, display extent).
+   */
+  Q_INVOKABLE QList<double>
+              loopPointTimelineTicks (double displayEndTicks) const;
 
   /**
    * @brief Warp-aware length of this clip in timeline ticks.
@@ -183,6 +195,18 @@ public:
       dsp::ContentTick (units::ticks (0.0)),
       loop_end_pos_->asTick () - loop_start_pos_->asTick ());
   }
+
+  /**
+   * @brief Shifts all child objects by @p delta content ticks.
+   */
+  virtual void shift_all_children (dsp::ContentTick delta) = 0;
+
+  /**
+   * @brief Returns the position of the first child, if any.
+   *
+   * Used by undo commands to capture/restore child positions.
+   */
+  virtual std::optional<dsp::ContentTick> first_child_position () const = 0;
 
   // ========================================================================
 

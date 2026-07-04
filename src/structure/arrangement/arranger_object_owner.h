@@ -68,11 +68,11 @@ public:
              &ArrangerObjectUuidReference::get_object_as<ChildT>);
   }
 
-  void add_ticks_to_children (double ticks)
+  void add_ticks_to_children (dsp::ContentTick ticks)
   {
     for (auto * child : get_children_view ())
       {
-        child->position ()->addTicks (ticks);
+        child->position ()->addTicks (ticks.asDouble ());
       }
   }
 

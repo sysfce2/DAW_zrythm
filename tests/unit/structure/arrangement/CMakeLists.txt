@@ -29,6 +29,7 @@ add_executable(zrythm_structure_arrangement_unit_tests
   tempo_object_manager_test.cpp
   time_signature_object_test.cpp
   timeline_data_provider_test.cpp
+  loop_segment_iterator_test.cpp
 )
 
 set_target_properties(zrythm_structure_arrangement_unit_tests PROPERTIES

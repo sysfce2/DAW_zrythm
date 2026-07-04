@@ -1753,7 +1753,7 @@ TEST_F (ClipRendererTest, SerializeAutomationClipWithClipStart)
   automation_clip->setTrackBounds (false);
   automation_clip->clipStartPosition ()->setTicks (25);
 
-  // A point before the clip start (excluded from playback) and one after.
+  // A point before the clip start and one after.
   add_automation_point (0.0f, 10);
   add_automation_point (1.0f, 50);
 
@@ -1761,20 +1761,27 @@ TEST_F (ClipRendererTest, SerializeAutomationClipWithClipStart)
 
   ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // The pre-clip-start point must not be rendered.
-  EXPECT_EQ (find_rendered_point_at (points, 10.0), nullptr);
+  // With clip_start=25, the intro segment plays virt [25, 200) → timeline
+  // delta [0, 175). Content position ct maps to delta (ct - 25).
+  // The clip also wraps (clip_start > 0 ⇒ looped), producing a second
+  // segment virt [0, 25) → delta [175, 200).
 
-  // A boundary control point is emitted at the clip start (tick 25) carrying
-  // the interpolated value between the two surrounding points
+  // A boundary control point at delta 0 (= clip-start content tick 25)
+  // carrying the interpolated value between the two surrounding points
   // ((25-10)/(50-10) = 0.375 of the way from 0.0 to 1.0).
-  const auto * boundary = find_rendered_point_at (points, 25.0);
+  const auto * boundary = find_rendered_point_at (points, 0.0);
   ASSERT_NE (boundary, nullptr);
   EXPECT_NEAR (boundary->value, 0.375f, 0.01f);
 
-  // The in-range point appears at its own position.
-  const auto * after = find_rendered_point_at (points, 50.0);
+  // The in-range AP@50 appears at delta 25 (= 50 - clip_start 25).
+  const auto * after = find_rendered_point_at (points, 25.0);
   ASSERT_NE (after, nullptr);
   EXPECT_FLOAT_EQ (after->value, 1.0f);
+
+  // AP@10 reappears in the loop-wrap segment at delta 185 (= 175 + 10).
+  const auto * wrapped = find_rendered_point_at (points, 185.0);
+  ASSERT_NE (wrapped, nullptr);
+  EXPECT_FLOAT_EQ (wrapped->value, 0.0f);
 }
 
 // The clip ends before the second point: only the first point (and the
@@ -1792,8 +1799,9 @@ TEST_F (ClipRendererTest, SerializeAutomationClipEndingMidCurve)
 
   ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // The first point only (no clip-start boundary — first AP is at 50 > 0).
-  ASSERT_EQ (points.size (), 1u);
+  // First AP at 50, plus a closing boundary at 200 (clip end) that carries
+  // the interpolated curve toward AP@250.
+  ASSERT_EQ (points.size (), 2u);
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 50.0)->value, 0.0f);
 
   // The point beyond the clip end is not rendered.
@@ -1821,17 +1829,30 @@ TEST_F (ClipRendererTest, SerializeAutomationClipLoopedEndingMidCurve)
 
   ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // First iteration (0..150): clip-start boundary, then the points up to 150.
-  // Second iteration (150..200): loop-wrap boundary at 150, then the in-loop
-  // point at 75 offset by one loop length -> 175.
-  // 5 points instead of 6 — no clip-start boundary since first AP is at 25 (>0).
-  ASSERT_EQ (points.size (), 5u);
+  // Segment 1 (intro, virt [0,150)): 3 APs @25/@75/@125 + closing @150
+  // (curve from AP@125 toward AP@175, which lies beyond the loop).
+  // Segment 2 (loop, virt [50,100)): start boundary @150, AP@75 @175,
+  // closing @200.
+  // Total: 3 + 1 + 1 + 1 + 1 = 7 points.
+  ASSERT_EQ (points.size (), 7u);
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 25.0)->value, 0.0f);
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 75.0)->value, 0.5f);
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 125.0)->value, 1.0f);
-  // Loop wrap-around boundary at 150: interpolated halfway between the point
-  // at 25 (0.0) and the point at 75 (0.5) -> 0.25.
-  EXPECT_NEAR (find_rendered_point_at (points, 150.0)->value, 0.25f, 0.01f);
+
+  // At the loop-wrap position (150) two points co-exist:
+  //  - closing from segment 1 (curve toward AP@175=0.2)
+  //  - start boundary from segment 2 (interpolated at loop-start tick 50,
+  //    halfway between AP@25=0.0 and AP@75=0.5 -> 0.25)
+  bool found_wrap_start = false;
+  for (const auto &p : points)
+    {
+      if (
+        std::abs (p.position.asDouble () - 150.0) < 1e-6
+        && std::abs (p.value - 0.25f) < 0.01f)
+        found_wrap_start = true;
+    }
+  EXPECT_TRUE (found_wrap_start);
+
   // The point at 75 (0.5) repeats one loop length later at 175.
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 175.0)->value, 0.5f);
 
@@ -1885,16 +1906,19 @@ TEST_F (ClipRendererTest, SerializeAutomationClipLoopStartMidCurve)
 
   ClipRenderer::serialize_to_points (*automation_clip, points);
 
-  // Iteration 1 (0..150): boundary@0, points @25/@75/@125.
-  // Iteration 2 (150..250): wrap boundary@150, points @75->175, @125->225.
-  // Iteration 3 (250..300): wrap boundary@250, point @75->275.
-  // 8 points instead of 9 — no clip-start boundary since first AP is at 25 (>0).
-  ASSERT_EQ (points.size (), 8u);
+  // Segment 1 (intro, virt [0,150)): 3 APs. No closing boundary (last AP
+  // held flat to end).
+  // Segment 2 (loop,  virt [50,150)): start boundary @150, 2 APs. No closing
+  // (last AP held flat).
+  // Segment 3 (loop,  virt [50,100)): start boundary @250, 1 AP + closing
+  // @300 (next AP@125 provides curve info).
+  // Total: 3 + 1 + 2 + 1 + 1 + 1 = 9 points.
+  ASSERT_EQ (points.size (), 9u);
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 25.0)->value, 0.0f);
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 75.0)->value, 1.0f);
   EXPECT_FLOAT_EQ (find_rendered_point_at (points, 125.0)->value, 0.5f);
 
-  // Each loop wrap-around carries the interpolated value at the loop start
+  // Each loop wrap start carries the interpolated value at the loop start
   // (tick 50), halfway between the point at 25 (0.0) and the point at 75
   // (1.0) -> 0.5.
   EXPECT_NEAR (find_rendered_point_at (points, 150.0)->value, 0.5f, 0.01f);
@@ -2060,17 +2084,68 @@ TEST_F (ClipRendererTest, SerializeAutomationClipPointAtLoopBoundary)
 
   // The second loop iteration starts at virtual tick 50 (= AP2's position).
   // The playback position of the loop wrap is 150 (first iteration length).
-  // Every rendered point at position 150 must carry AP2's curve params.
+  // The segment-2 start point at 150 must carry AP2's curve params.
+  // (A closing boundary from the previous segment may also sit at 150 —
+  // that one carries the last AP's curve, not AP2's.)
   for (const auto &p : points)
     {
-      if (std::abs (p.position.asDouble () - 150.0) < 1e-6)
+      if (
+        std::abs (p.position.asDouble () - 150.0) < 1e-6
+        && std::abs (p.value - 0.5f) < 1e-6)
         {
           EXPECT_FLOAT_EQ (p.curve_curviness, -0.3f)
-            << "Loop-boundary point at 150 should carry AP2's curve (curviness "
+            << "Loop-start point at 150 should carry AP2's curve (curviness "
                "-0.3), got "
             << p.curve_curviness;
         }
     }
+}
+
+// Source-mode clip with a tempo change: loop iterations must have non-uniform
+// timeline spacing because the same source-BPM duration maps to different tick
+// counts at different tempo positions.
+//
+// Setup: 120 BPM at tick 0, drops to 60 BPM at tick 1920. Source BPM 120.
+// Loop [0, 1920) = 1 second of content at 120 BPM. Clip length 3840 (2
+// iterations).
+//
+// Expected: note at content tick 960 appears at delta 960 (first iteration,
+// before tempo change) and delta 2400 (second iteration, after tempo change).
+// Spacing = 1440, NOT 1920 (which the old uniform-spacing bug would produce).
+TEST_F (ClipRendererTest, SerializeMidiClipSourceModeWithTempoChangeAndLoop)
+{
+  tempo_map->add_tempo_event (
+    units::ticks (1920), units::bpm (60.0), dsp::TempoMap::CurveType::Constant);
+
+  midi_clip->position ()->setTicks (0);
+  midi_clip->length ()->setTicks (3840);
+  midi_clip->setTrackBounds (false);
+  midi_clip->loopStartPosition ()->setTicks (0);
+  midi_clip->loopEndPosition ()->setTicks (1920);
+  midi_clip->clipStartPosition ()->setTicks (0);
+  midi_clip->contentWarp ()->configure_as_source (units::bpm (120.0));
+
+  add_midi_note (60, 100, 960, 100);
+
+  juce::MidiMessageSequence events;
+  ClipRenderer::serialize_to_sequence (*midi_clip, events);
+
+  std::vector<double> note_ons;
+  for (int i = 0; i < events.getNumEvents (); ++i)
+    if (events.getEventPointer (i)->message.isNoteOn ())
+      note_ons.push_back (events.getEventPointer (i)->message.getTimeStamp ());
+
+  ASSERT_EQ (note_ons.size (), 2u)
+    << "Note should appear once per loop iteration";
+
+  EXPECT_NEAR (note_ons[0], 960.0, 1.0)
+    << "First occurrence at 120 BPM: 0.5s -> 960 ticks";
+  EXPECT_NEAR (note_ons[1], 2400.0, 1.0)
+    << "Second occurrence: 1.5s -> 1920 + 480 = 2400 ticks";
+
+  const auto spacing = note_ons[1] - note_ons[0];
+  EXPECT_NEAR (spacing, 1440.0, 1.0)
+    << "Non-uniform spacing (1440, not 1920) proves tempo change is respected";
 }
 
 } // namespace zrythm::structure::arrangement

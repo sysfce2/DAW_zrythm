@@ -136,8 +136,9 @@ TEST_F (ArrangerObjectOwnerTest, AddTicksToChildren)
   auto initial_ticks = obj_ref.get_object_as<MidiNote> ()->position ()->ticks ();
 
   // Add ticks (use MidiNote base class explicitly)
-  double ticks_to_add = 10.0;
-  owner->ArrangerObjectOwner<MidiNote>::add_ticks_to_children (ticks_to_add);
+  const double ticks_to_add = 10.0;
+  owner->ArrangerObjectOwner<MidiNote>::add_ticks_to_children (
+    dsp::ContentTick{ units::ticks (ticks_to_add) });
 
   // Verify position changed
   EXPECT_DOUBLE_EQ (

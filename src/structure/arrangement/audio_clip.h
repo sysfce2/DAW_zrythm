@@ -89,6 +89,10 @@ public:
     return { ArrangerObjectOwner<AudioSourceObject>::get_model () };
   }
 
+  void shift_all_children (dsp::ContentTick delta) override;
+
+  std::optional<dsp::ContentTick> first_child_position () const override;
+
 private:
   friend void init_from (
     AudioClip             &obj,

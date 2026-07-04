@@ -54,6 +54,29 @@ MidiClip::update_warp_configuration ()
 }
 
 void
+MidiClip::shift_all_children (dsp::ContentTick delta)
+{
+  ArrangerObjectOwner<MidiNote>::add_ticks_to_children (delta);
+  ArrangerObjectOwner<MidiControlEvent>::add_ticks_to_children (delta);
+}
+
+std::optional<dsp::ContentTick>
+MidiClip::first_child_position () const
+{
+  const auto &notes = ArrangerObjectOwner<MidiNote>::get_children_vector ();
+  if (!notes.empty ())
+    return notes.front ().get_object_as<MidiNote> ()->position ()->asTick ();
+  const auto &controls =
+    ArrangerObjectOwner<MidiControlEvent>::get_children_vector ();
+  if (!controls.empty ())
+    return controls.front ()
+      .get_object_as<MidiControlEvent> ()
+      ->position ()
+      ->asTick ();
+  return std::nullopt;
+}
+
+void
 init_from (MidiClip &obj, const MidiClip &other, utils::ObjectCloneType clone_type)
 {
   obj.source_bpm_ = other.source_bpm_;

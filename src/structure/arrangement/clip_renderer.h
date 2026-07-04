@@ -5,6 +5,7 @@
 
 #include "dsp/tick_types.h"
 #include "structure/arrangement/arranger_object_all.h"
+#include "structure/arrangement/loop_segment_iterator.h"
 #include "utils/audio.h"
 #include "utils/units.h"
 
@@ -145,114 +146,35 @@ private:
     // currently unused
     std::optional<TimelineRange> timeline_range_ticks = std::nullopt)
   {
-    const auto * warp = clip.contentWarp ();
-    const auto   clip_length = clip.length ()->asTick ();
+    const auto clip_length = clip.length ()->asTick ();
 
-    // contentToTimeline() returns absolute timeline positions (it includes
-    // the clip's start position).  We subtract clip_start so that all
-    // positions passed to handle_*_clip_range are relative to the clip
-    // start — matching the committed behaviour and what callers expect.
-    const auto clip_start = warp->contentToTimeline (dsp::ContentTick{});
-
-    // Timeline end of the clip and span of one loop iteration (relative).
-    const auto tl_clip_end = warp->contentToTimeline (clip_length) - clip_start;
-    const auto tl_loop_length =
-      warp->contentToTimeline (clip.loopEndPosition ()->asTick ())
-      - warp->contentToTimeline (clip.loopStartPosition ()->asTick ());
-
-    auto loop_segment_virtual_start = clip.clipStartPosition ()->asTick ();
-    auto loop_segment_virtual_end = clip.loopEndPosition ()->asTick ();
-
-    // Timeline positions of the current segment (relative to clip start).
-    auto loop_segment_start =
-      warp->contentToTimeline (loop_segment_virtual_start) - clip_start;
-    auto loop_segment_end =
-      warp->contentToTimeline (loop_segment_virtual_end) - clip_start;
-
-    // Clip first segment to clip bounds.
-    if (loop_segment_end > tl_clip_end)
-      {
-        loop_segment_virtual_end =
-          warp->timelineToContent (tl_clip_end + clip_start);
-        loop_segment_end = tl_clip_end;
-      }
-
-    while (loop_segment_start < tl_clip_end)
-      {
+    for_each_loop_segment (
+      clip.clipStartPosition ()->asTick (),
+      clip.loopStartPosition ()->asTick (), clip.loopEndPosition ()->asTick (),
+      clip_length, [&] (const LoopSegment &segment) {
         if constexpr (std::is_same_v<ClipT, MidiClip>)
-          {
-            handle_midi_clip_range (
-              clip, events,
-              std::make_pair (
-                loop_segment_virtual_start, loop_segment_virtual_end),
-              loop_segment_start);
-          }
+          handle_midi_clip_range (clip, events, segment);
         else if constexpr (std::is_same_v<ClipT, ChordClip>)
-          {
-            handle_chord_clip_range (
-              clip, events,
-              std::make_pair (
-                loop_segment_virtual_start, loop_segment_virtual_end),
-              loop_segment_start);
-          }
-        else if constexpr (std::is_same_v<ClipT, AudioClip>)
-          {
-            handle_audio_clip_range (
-              clip, events,
-              std::make_pair (
-                loop_segment_virtual_start, loop_segment_virtual_end),
-              loop_segment_start);
-          }
+          handle_chord_clip_range (clip, events, segment);
         else if constexpr (std::is_same_v<ClipT, AutomationClip>)
-          {
-            handle_automation_clip_range (
-              clip, events,
-              std::make_pair (
-                loop_segment_virtual_start, loop_segment_virtual_end),
-              loop_segment_start);
-          }
-
-        // Advance to next segment
-        const auto currentLen = loop_segment_end - loop_segment_start;
-        loop_segment_virtual_start = clip.loopStartPosition ()->asTick ();
-        loop_segment_virtual_end = clip.loopEndPosition ()->asTick ();
-        loop_segment_start = loop_segment_start + currentLen;
-        loop_segment_end = loop_segment_end + tl_loop_length;
-
-        // Clip final segment to clip bounds
-        if (loop_segment_end > tl_clip_end)
-          {
-            loop_segment_virtual_end = warp->timelineToContent (
-              tl_clip_end - loop_segment_start
-              + warp->contentToTimeline (loop_segment_virtual_start));
-            loop_segment_end = tl_clip_end;
-          }
-      }
+          handle_automation_clip_range (clip, events, segment);
+      });
   }
 
   static void handle_midi_clip_range (
-    const MidiClip                               &clip,
-    juce::MidiMessageSequence                    &events,
-    std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-    dsp::TimelineTick                             segment_start);
+    const MidiClip            &clip,
+    juce::MidiMessageSequence &events,
+    const LoopSegment         &segment);
 
   static void handle_chord_clip_range (
-    const ChordClip                              &clip,
-    juce::MidiMessageSequence                    &events,
-    std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-    dsp::TimelineTick                             segment_start);
-
-  static void handle_audio_clip_range (
-    const AudioClip                              &clip,
-    juce::AudioSampleBuffer                      &buffer,
-    std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-    dsp::TimelineTick                             segment_start);
+    const ChordClip           &clip,
+    juce::MidiMessageSequence &events,
+    const LoopSegment         &segment);
 
   static void handle_automation_clip_range (
-    const AutomationClip                         &clip,
-    std::vector<RenderedAutomationPoint>         &points,
-    std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-    dsp::TimelineTick                             segment_start);
+    const AutomationClip                 &clip,
+    std::vector<RenderedAutomationPoint> &points,
+    const LoopSegment                    &segment);
 
   /**
    * @brief Reads the clip's content for an output sample range, in playback

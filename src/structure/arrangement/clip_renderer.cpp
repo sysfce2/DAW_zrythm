@@ -40,24 +40,35 @@ ClipRenderer::LoopParameters::LoopParameters (const Clip &clip)
       : 0;
 }
 
+// Maps a source-content position to a timeline delta (relative to the clip
+// start) within a loop segment. Shared by the MIDI, chord, and automation
+// clip range handlers so the loop-projection formula lives in one place.
+static dsp::TimelineTick
+segment_content_to_timeline_delta (
+  const dsp::ContentTimeWarp &warp,
+  dsp::TimelineTick           clip_start_tl,
+  const LoopSegment          &segment,
+  dsp::ContentTick            ct)
+{
+  return warp.contentToTimeline (segment.abs_start + (ct - segment.virt_start))
+         - clip_start_tl;
+}
+
 void
 ClipRenderer::handle_midi_clip_range (
-  const MidiClip                               &clip,
-  juce::MidiMessageSequence                    &events,
-  std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-  dsp::TimelineTick                             segment_start)
+  const MidiClip            &clip,
+  juce::MidiMessageSequence &events,
+  const LoopSegment         &segment)
 {
   const auto * warp = clip.contentWarp ();
+  const auto   clip_start_tl = warp->contentToTimeline (dsp::ContentTick{});
 
-  // Timeline positions of the segment boundaries
-  const auto tl_segment_start = warp->contentToTimeline (virtual_range.first);
-  const auto tl_segment_end = warp->contentToTimeline (virtual_range.second);
-  const auto segment_end = segment_start + (tl_segment_end - tl_segment_start);
-
-  // Helper: content position → timeline position within this loop segment
   auto to_timeline = [&] (dsp::ContentTick ct) -> dsp::TimelineTick {
-    return segment_start + (warp->contentToTimeline (ct) - tl_segment_start);
+    return segment_content_to_timeline_delta (*warp, clip_start_tl, segment, ct);
   };
+
+  const auto segment_start = to_timeline (segment.virt_start);
+  const auto segment_end = to_timeline (segment.virt_end);
 
   // Add notes for this loop segment
   for (
@@ -72,9 +83,7 @@ ClipRenderer::handle_midi_clip_range (
       const auto note_v_end = note_v_start + note->length ()->asTick ();
 
       // Only include notes that fall within the loop range
-      if (
-        note_v_start >= virtual_range.second
-        || note_v_end <= virtual_range.first)
+      if (note_v_start >= segment.virt_end || note_v_end <= segment.virt_start)
         continue;
 
       const auto note_start =
@@ -97,7 +106,7 @@ ClipRenderer::handle_midi_clip_range (
     clip.ArrangerObjectOwner<MidiControlEvent>::get_children_view ()
       | std::views::filter ([&] (const auto * e) {
           const auto start = e->position ()->asTick ();
-          return start >= virtual_range.first && start < virtual_range.second;
+          return start >= segment.virt_start && start < segment.virt_end;
         }))
     {
       const auto ev_start = to_timeline (ev->position ()->asTick ());
@@ -142,106 +151,19 @@ ClipRenderer::handle_midi_clip_range (
 }
 
 void
-ClipRenderer::handle_audio_clip_range (
-  const AudioClip                              &clip,
-  juce::AudioSampleBuffer                      &buffer,
-  std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-  dsp::TimelineTick                             segment_start)
-{
-  const auto * warp = clip.contentWarp ();
-
-  // Timeline positions of the segment boundaries
-  const auto tl_segment_start = warp->contentToTimeline (virtual_range.first);
-  const auto tl_segment_end = warp->contentToTimeline (virtual_range.second);
-  const auto segment_end = segment_start + (tl_segment_end - tl_segment_start);
-
-  // Get the audio source from the clip
-  auto &audio_source = clip.get_audio_source ();
-
-  // Convert tick positions to sample positions
-  const auto &tempo_map = clip.get_tempo_map ();
-  const auto  segment_start_samples =
-    tempo_map.tick_to_samples_rounded (segment_start);
-  const auto segment_end_samples =
-    tempo_map.tick_to_samples_rounded (segment_end);
-  const auto segment_length_samples =
-    segment_end_samples - segment_start_samples;
-
-  assert (segment_length_samples > units::samples (0));
-
-  // Create a temporary buffer for this segment
-  const auto segment_length_samples_int =
-    static_cast<int> (segment_length_samples.in (units::samples));
-  juce::AudioSampleBuffer temp_buffer (
-    buffer.getNumChannels (), segment_length_samples_int);
-  temp_buffer.clear ();
-
-  // Calculate the read position in the audio source.
-  // Content position → timeline samples via warp.
-  const auto virtual_start_samples =
-    warp->contentToTimelineSamples (virtual_range.first);
-
-  // Read audio data from the source
-  const auto source_length = audio_source.getTotalLength ();
-  const auto virtual_start_samples_int =
-    static_cast<int> (virtual_start_samples.in (units::samples));
-
-  if (virtual_start_samples_int < source_length)
-    {
-      const auto readable_length = std::min (
-        segment_length_samples_int,
-        static_cast<int> (source_length - virtual_start_samples_int));
-
-      audio_source.setNextReadPosition (virtual_start_samples_int);
-
-      juce::AudioSourceChannelInfo source_ch_nfo{
-        &temp_buffer, 0, readable_length
-      };
-      audio_source.getNextAudioBlock (source_ch_nfo);
-    }
-
-  // Mix into the output buffer at the correct position
-  const auto segment_start_samples_int =
-    static_cast<int> (segment_start_samples.in (units::samples));
-
-  // Ensure the output buffer is large enough
-  if (
-    segment_start_samples_int + segment_length_samples_int
-    > buffer.getNumSamples ())
-    {
-      buffer.setSize (
-        buffer.getNumChannels (),
-        segment_start_samples_int + segment_length_samples_int, true, true,
-        false);
-    }
-
-  // Mix the temporary buffer into the output buffer
-  for (int channel = 0; channel < buffer.getNumChannels (); ++channel)
-    {
-      buffer.addFrom (
-        channel, segment_start_samples_int, temp_buffer, channel, 0,
-        segment_length_samples_int);
-    }
-}
-
-void
 ClipRenderer::handle_chord_clip_range (
-  const ChordClip                              &clip,
-  juce::MidiMessageSequence                    &events,
-  std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-  dsp::TimelineTick                             segment_start)
+  const ChordClip           &clip,
+  juce::MidiMessageSequence &events,
+  const LoopSegment         &segment)
 {
   const auto * warp = clip.contentWarp ();
+  const auto   clip_start_tl = warp->contentToTimeline (dsp::ContentTick{});
 
-  // Timeline positions of the segment boundaries
-  const auto tl_segment_start = warp->contentToTimeline (virtual_range.first);
-  const auto tl_segment_end = warp->contentToTimeline (virtual_range.second);
-  const auto segment_end = segment_start + (tl_segment_end - tl_segment_start);
-
-  // Helper: content position → timeline position within this loop segment
   auto to_timeline = [&] (dsp::ContentTick ct) -> dsp::TimelineTick {
-    return segment_start + (warp->contentToTimeline (ct) - tl_segment_start);
+    return segment_content_to_timeline_delta (*warp, clip_start_tl, segment, ct);
   };
+
+  const auto segment_end = to_timeline (segment.virt_end);
 
   // Gather the unmuted chord objects that fall within this loop segment,
   // together with their absolute start position. A ChordObject has no
@@ -266,8 +188,7 @@ ClipRenderer::handle_chord_clip_range (
 
       // Only include objects that fall within the loop range
       if (
-        chord_v_start >= virtual_range.second
-        || chord_v_start < virtual_range.first)
+        chord_v_start >= segment.virt_end || chord_v_start < segment.virt_start)
         continue;
 
       active_chords.push_back ({ chord_object, to_timeline (chord_v_start) });
@@ -392,17 +313,15 @@ eval_at_virt_tick (const auto &sorted_points, dsp::ContentTick virt_tick)
 
 void
 ClipRenderer::handle_automation_clip_range (
-  const AutomationClip                         &clip,
-  std::vector<RenderedAutomationPoint>         &points,
-  std::pair<dsp::ContentTick, dsp::ContentTick> virtual_range,
-  dsp::TimelineTick                             segment_start)
+  const AutomationClip                 &clip,
+  std::vector<RenderedAutomationPoint> &points,
+  const LoopSegment                    &segment)
 {
   const auto * warp = clip.contentWarp ();
-  const auto   tl_segment_start = warp->contentToTimeline (virtual_range.first);
+  const auto   clip_start_tl = warp->contentToTimeline (dsp::ContentTick{});
 
-  // Helper: content position → timeline-tick-relative-to-clip-start.
   auto to_timeline = [&] (dsp::ContentTick ct) -> dsp::TimelineTick {
-    return segment_start + (warp->contentToTimeline (ct) - tl_segment_start);
+    return segment_content_to_timeline_delta (*warp, clip_start_tl, segment, ct);
   };
 
   // Helper: build a RenderedAutomationPoint from AP + curve-domain info.
@@ -426,8 +345,8 @@ ClipRenderer::handle_automation_clip_range (
     };
 
   const auto sorted_aps = clip.get_sorted_children_view ();
-  const auto vs = virtual_range.first;
-  const auto ve = virtual_range.second;
+  const auto vs = segment.virt_start;
+  const auto ve = segment.virt_end;
 
   // Boundary point at segment start — skip when an AP already sits at vs
   // (the AP loop below will emit it with identical params).
@@ -452,6 +371,16 @@ ClipRenderer::handle_automation_clip_range (
       points.push_back (
         make_point (ap, next_ap, to_timeline (ap_virt), ap->value ()));
     }
+
+  // Boundary point at segment end — gives the RT reader a curve endpoint
+  // when the next AP lies beyond the segment boundary.
+  {
+    auto [val, driving_ap, next_ap] = eval_at_virt_tick (sorted_aps, ve);
+    if (
+      driving_ap != nullptr && next_ap != nullptr
+      && driving_ap->position ()->asTick () != ve)
+      points.push_back (make_point (driving_ap, next_ap, to_timeline (ve), val));
+  }
 }
 
 void

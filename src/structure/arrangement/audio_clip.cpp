@@ -158,4 +158,23 @@ from_json (const nlohmann::json &j, AudioClip &clip)
   clip.update_warp_configuration ();
 }
 
+void
+AudioClip::shift_all_children (dsp::ContentTick delta)
+{
+  ArrangerObjectOwner<AudioSourceObject>::add_ticks_to_children (delta);
+}
+
+std::optional<dsp::ContentTick>
+AudioClip::first_child_position () const
+{
+  const auto &children =
+    ArrangerObjectOwner<AudioSourceObject>::get_children_vector ();
+  if (!children.empty ())
+    return children.front ()
+      .get_object_as<AudioSourceObject> ()
+      ->position ()
+      ->asTick ();
+  return std::nullopt;
+}
+
 } // namespace zrythm::structure::arrangement

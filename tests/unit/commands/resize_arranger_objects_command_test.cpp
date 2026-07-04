@@ -695,7 +695,7 @@ TEST_F (ResizeArrangerObjectsCommandTest, BoundsResizeFromEndAbsoluteMode)
   // Timeline length should change by exactly 1000 ticks.
   const double timeline_delta =
     clip->timelineLengthTicks () - (original_content_length * ratio);
-  EXPECT_NEAR (timeline_delta, 1000.0, 2.0);
+  EXPECT_NEAR (timeline_delta, 1000.0, 0.5);
 }
 
 // Test bounds resize from end with Absolute timebase and a tempo change
@@ -733,7 +733,7 @@ TEST_F (
 
   // The timeline length must change by EXACTLY 960 ticks.
   const double new_timeline_length = clip->timelineLengthTicks ();
-  EXPECT_NEAR (new_timeline_length - old_timeline_length, 960.0, 2.0);
+  EXPECT_NEAR (new_timeline_length - old_timeline_length, 960.0, 0.5);
 }
 
 // Test bounds resize from start with Absolute timebase (non-identity warp).
@@ -765,7 +765,125 @@ TEST_F (ResizeArrangerObjectsCommandTest, BoundsResizeFromStartAbsoluteMode)
 
   // Timeline length should shrink by exactly 1000 ticks.
   const double new_timeline_length = clip->timelineLengthTicks ();
-  EXPECT_NEAR (old_timeline_length - new_timeline_length, 1000.0, 2.0);
+  EXPECT_NEAR (old_timeline_length - new_timeline_length, 1000.0, 0.5);
+}
+
+// Test FromStart resize with Absolute timebase and a tempo change inside
+// the clip. Children must shift by a position-dependent amount (not a uniform
+// content_delta) because the warp ratio varies across the clip.
+TEST_F (
+  ResizeArrangerObjectsCommandTest,
+  BoundsResizeFromStartAbsoluteModeWithTempoChange)
+{
+  // Tempo change at tick 3840 (bar 3).
+  tempo_map->add_tempo_event (
+    units::ticks (3840), units::bpm (240.0), dsp::TempoMap::CurveType::Constant);
+
+  auto * clip =
+    audio_clip_ref.get_object_as<structure::arrangement::AudioClip> ();
+  ASSERT_NE (clip, nullptr);
+  ASSERT_NE (clip->contentWarp (), nullptr);
+
+  clip->position ()->setTicks (0.0);
+  clip->length ()->setTicks (7680.0);
+  clip->timebaseProvider ()->setOverride (dsp::Timebase::Absolute);
+  clip->contentWarp ()->configure_as_source (units::bpm (120.0));
+
+  const double old_timeline_length = clip->timelineLengthTicks ();
+
+  std::vector<structure::arrangement::ArrangerObjectUuidReference> objects = {
+    audio_clip_ref
+  };
+  ResizeArrangerObjectsCommand command (
+    objects, ResizeType::Bounds, ResizeDirection::FromStart, 960.0);
+  command.redo ();
+
+  // Timeline length must shrink by exactly 960 ticks.
+  const double new_timeline_length = clip->timelineLengthTicks ();
+  EXPECT_NEAR (old_timeline_length - new_timeline_length, 960.0, 0.5);
+}
+
+// Source-mode clip whose current bounds are entirely within a constant-tempo
+// region, resized past a tempo change into a region with a different ratio.
+TEST_F (
+  ResizeArrangerObjectsCommandTest,
+  BoundsResizeFromEndIdentityWarpExtendingPastTempoChange)
+{
+  // Tempo drops to half-speed at tick 3840 (bar 3 at 120 BPM).
+  tempo_map->add_tempo_event (
+    units::ticks (3840), units::bpm (60.0), dsp::TempoMap::CurveType::Constant);
+
+  auto * clip =
+    audio_clip_ref.get_object_as<structure::arrangement::AudioClip> ();
+  ASSERT_NE (clip, nullptr);
+  ASSERT_NE (clip->contentWarp (), nullptr);
+
+  // Clip at position 0, length 1920 (entirely before the tempo change).
+  clip->position ()->setTicks (0.0);
+  clip->length ()->setTicks (1920.0);
+  clip->timebaseProvider ()->setOverride (dsp::Timebase::Absolute);
+  clip->contentWarp ()->configure_as_source (units::bpm (120.0));
+
+  // Source BPM 120 == project BPM 120 in [0, 1920] → identity warp.
+  ASSERT_TRUE (clip->contentWarp ()->is_identity ());
+
+  const double old_timeline_length = clip->timelineLengthTicks ();
+
+  // Resize FromEnd by 3840 timeline ticks (extends well past tick 3840).
+  std::vector<structure::arrangement::ArrangerObjectUuidReference> objects = {
+    audio_clip_ref
+  };
+  ResizeArrangerObjectsCommand command (
+    objects, ResizeType::Bounds, ResizeDirection::FromEnd, 3840.0);
+  command.redo ();
+
+  // Timeline length must change by exactly 3840 ticks.
+  const double new_timeline_length = clip->timelineLengthTicks ();
+  EXPECT_NEAR (new_timeline_length - old_timeline_length, 3840.0, 0.5);
+}
+
+// FromStart resize must preserve children's timeline positions: existing
+// content stays at the same timeline position while the clip expands left.
+TEST_F (
+  ResizeArrangerObjectsCommandTest,
+  BoundsResizeFromStartPreservesChildrenTimelinePositions)
+{
+  auto * clip = midi_clip_ref.get_object_as<structure::arrangement::MidiClip> ();
+  ASSERT_NE (clip, nullptr);
+
+  // Musical mode (Project mode identity warp).
+  clip->position ()->setTicks (3840.0);
+  clip->length ()->setTicks (3840.0);
+  clip->setTrackBounds (false);
+
+  // Add a MIDI note at content position 960.
+  auto note_ref = utils::create_object<structure::arrangement::MidiNote> (
+    object_registry, *tempo_map_wrapper);
+  auto * note = note_ref.get_object_as<structure::arrangement::MidiNote> ();
+  note->position ()->setTicks (960.0);
+  note->length ()->setTicks (480.0);
+  clip->structure::arrangement::ArrangerObjectOwner<
+    structure::arrangement::MidiNote>::add_object (note_ref);
+
+  // Record child's timeline position before resize.
+  const double note_timeline_before =
+    structure::arrangement::timeline_ticks (*note).asDouble ();
+  // Timeline: clip_start 3840 + content 960 = 4800.
+  EXPECT_NEAR (note_timeline_before, 4800.0, 0.5);
+
+  // Resize FromStart by -1920 (drag left edge to the left).
+  std::vector<structure::arrangement::ArrangerObjectUuidReference> objects = {
+    midi_clip_ref
+  };
+  ResizeArrangerObjectsCommand command (
+    objects, ResizeType::Bounds, ResizeDirection::FromStart, -1920.0);
+  command.redo ();
+
+  // Child's timeline position must be unchanged.
+  const double note_timeline_after =
+    structure::arrangement::timeline_ticks (*note).asDouble ();
+  EXPECT_NEAR (note_timeline_after, note_timeline_before, 0.5)
+    << "Child timeline position must be preserved on FromStart resize";
 }
 
 } // namespace zrythm::commands

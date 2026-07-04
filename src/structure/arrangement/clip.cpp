@@ -1,10 +1,12 @@
-// SPDX-FileCopyrightText: (C) 2026 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
 #include "structure/arrangement/clip.h"
+#include "structure/arrangement/loop_segment_iterator.h"
 
 #include <au/math.hh>
 #include <nlohmann/json.hpp>
@@ -163,6 +165,25 @@ Clip::timelineLengthTicks () const
   const auto * pos = qobject_cast<const dsp::TimelinePosition *> (position ());
   const auto   start_ticks = pos->asTick ();
   return (end_ticks - start_ticks).asDouble ();
+}
+
+QList<double>
+Clip::loopPointTimelineTicks (double displayEndTicks) const
+{
+  const auto clip_start_tl =
+    content_warp_->contentToTimeline (dsp::ContentTick{});
+  const auto max_delta = dsp::TimelineTick{
+    units::ticks (std::max (timelineLengthTicks (), displayEndTicks))
+  };
+
+  return compute_loop_boundary_deltas (
+           [&] (dsp::ContentTick ct) {
+             return content_warp_->contentToTimeline (ct) - clip_start_tl;
+           },
+           clipStartPosition ()->asTick (), loopStartPosition ()->asTick (),
+           loopEndPosition ()->asTick (), max_delta)
+         | std::views::transform (&dsp::TimelineTick::asDouble)
+         | std::ranges::to<QList<double>> ();
 }
 
 bool

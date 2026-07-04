@@ -54,6 +54,7 @@ target_sources(zrythm_arrangement_lib
       clip.h
       colored_object.h
       fadeable_object.h
+      loop_segment_iterator.h
       marker.h
       midi_control_event.h
       midi_note.h
