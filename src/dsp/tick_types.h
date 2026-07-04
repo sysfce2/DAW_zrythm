@@ -83,6 +83,27 @@ template <typename Q> struct BasicTimelineTick
   }
   BasicTimelineTick operator- () const { return BasicTimelineTick{ -value_ }; }
 
+  // --- Scalar arithmetic (interpolation helpers) ---
+
+  /// Dimensionless ratio of two equal-domain quantities (@p this / @p o).
+  constexpr double operator/ (const BasicTimelineTick &o) const
+  {
+    return value_ / o.value_;
+  }
+
+  /// Scale by a dimensionless factor.
+  constexpr BasicTimelineTick operator* (double scalar) const
+  {
+    return BasicTimelineTick{ value_ * scalar };
+  }
+
+  /// Symmetric scalar multiplication (factor * quantity).
+  friend constexpr BasicTimelineTick
+  operator* (double scalar, const BasicTimelineTick &t)
+  {
+    return BasicTimelineTick{ scalar * t.value_ };
+  }
+
   // --- Accessors ---
   Q      asQuantity () const { return value_; }
   double asDouble () const { return value_.in (units::ticks); }
@@ -155,6 +176,27 @@ template <typename Q> struct BasicContentTick
     return *this;
   }
   BasicContentTick operator- () const { return BasicContentTick{ -value_ }; }
+
+  // --- Scalar arithmetic (interpolation helpers) ---
+
+  /// Dimensionless ratio of two equal-domain quantities (@p this / @p o).
+  constexpr double operator/ (const BasicContentTick &o) const
+  {
+    return value_ / o.value_;
+  }
+
+  /// Scale by a dimensionless factor.
+  constexpr BasicContentTick operator* (double scalar) const
+  {
+    return BasicContentTick{ value_ * scalar };
+  }
+
+  /// Symmetric scalar multiplication (factor * quantity).
+  friend constexpr BasicContentTick
+  operator* (double scalar, const BasicContentTick &t)
+  {
+    return BasicContentTick{ scalar * t.value_ };
+  }
 
   // --- Accessors ---
   Q      asQuantity () const { return value_; }
