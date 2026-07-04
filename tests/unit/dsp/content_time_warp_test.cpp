@@ -5,6 +5,8 @@
 #include "dsp/position.h"
 #include "dsp/tempo_map.h"
 #include "dsp/tempo_map_qml_adapter.h"
+#include "dsp/tempo_warp_map.h"
+#include "dsp/time_warp_map.h"
 #include "utils/units.h"
 
 #include <QSignalSpy>
@@ -173,6 +175,20 @@ TEST (WarpLookupTest, ExtrapolationUsesLastSegment)
     1000.0, 0.5);
 }
 
+TEST (WarpLookupTest, ExtrapolationBeforeFirstPoint)
+{
+  // Forward slope 2.0: {0, 0}, {100, 200}
+  // Content -50 before first point.
+  // Extrapolation: delta = 0 + 2.0 * (-50 - 0) = -100
+  std::vector<ContentTimeWarp::WarpPoint> warp_points = {
+    { ContentTick{ units::ticks (0.0) },   TimelineTick{ units::ticks (0.0) }   },
+    { ContentTick{ units::ticks (100.0) }, TimelineTick{ units::ticks (200.0) } }
+  };
+  EXPECT_NEAR (
+    warp_lookup (warp_points, ContentTick{ units::ticks (-50.0) }).asDouble (),
+    -100.0, 0.5);
+}
+
 // --- Reverse warp lookup tests ---
 
 TEST (ReverseWarpLookupTest, EmptyIsIdentity)
@@ -212,17 +228,34 @@ TEST (ReverseWarpLookupTest, ExtrapolationUsesLastSegment)
     300.0, 0.5);
 }
 
-TEST (ReverseWarpLookupTest, ClampsBeforeFirstPoint)
+TEST (ReverseWarpLookupTest, ExtrapolationBeforeFirstPoint)
 {
+  // Identity warp: {0, 0}, {100, 100} — slope 1.0
+  // Delta -50 is before the first point's delta (0).
+  // Extrapolation: content = 0 + 1.0 * (-50 - 0) = -50
   std::vector<ContentTimeWarp::WarpPoint> warp_points = {
-    { ContentTick{ units::ticks (100.0) }, TimelineTick{ units::ticks (50.0) }  },
-    { ContentTick{ units::ticks (200.0) }, TimelineTick{ units::ticks (100.0) } }
+    { ContentTick{ units::ticks (0.0) },   TimelineTick{ units::ticks (0.0) }   },
+    { ContentTick{ units::ticks (100.0) }, TimelineTick{ units::ticks (100.0) } }
   };
-  // Delta before first point's delta clamps to first content position
   EXPECT_NEAR (
-    reverse_warp_lookup (warp_points, TimelineTick{ units::ticks (25.0) })
+    reverse_warp_lookup (warp_points, TimelineTick{ units::ticks (-50.0) })
       .asDouble (),
-    100.0, 0.5);
+    -50.0, 0.5);
+}
+
+TEST (ReverseWarpLookupTest, ExtrapolationBeforeFirstPointNonIdentity)
+{
+  // Forward slope 2.0: {0, 0}, {100, 200}
+  // Reverse slope = dContent/dDelta = 100/200 = 0.5
+  // Delta -100: content = 0 + 0.5 * (-100 - 0) = -50
+  std::vector<ContentTimeWarp::WarpPoint> warp_points = {
+    { ContentTick{ units::ticks (0.0) },   TimelineTick{ units::ticks (0.0) }   },
+    { ContentTick{ units::ticks (100.0) }, TimelineTick{ units::ticks (200.0) } }
+  };
+  EXPECT_NEAR (
+    reverse_warp_lookup (warp_points, TimelineTick{ units::ticks (-100.0) })
+      .asDouble (),
+    -50.0, 0.5);
 }
 
 TEST (ReverseWarpLookupTest, MultiSegmentDifferentSlopes)
@@ -281,6 +314,78 @@ TEST_F (ContentTimeWarpTest, TimelineToContentProjectModeIdentity)
   EXPECT_NEAR (recovered.asDouble (), 500.0, 0.5);
 }
 
+TEST_F (ContentTimeWarpTest, ProjectModeTimelineToContentBeforeClipStart)
+{
+  pos_->setTicks (1920.0);
+  warp_->configure_as_project (units::bpm (120.0));
+
+  // Timeline position before clip start.
+  // Identity: content = timeline - clip_start = 0 - 1920 = -1920
+  const auto timeline = TimelineTick{ units::ticks (0.0) };
+  const auto recovered = warp_->timelineToContent (timeline);
+  EXPECT_NEAR (recovered.asDouble (), -1920.0, 0.5);
+}
+
+// Source mode: timelineToContent computes the exact inverse via the tempo
+// map, covering positions beyond the clip's warp-point range.
+TEST_F (ContentTimeWarpTest, SourceModeTimelineToContentExactBeyondWarpRange)
+{
+  // Tempo halves at tick 1920 — BEYOND the short clip (length 960).
+  tempo_map_wrapper_->addTempoEvent (
+    1920, 60.0, TempoEventWrapper::CurveType::Constant);
+
+  pos_->setTicks (0.0);
+  len_->setTicks (960.0);
+  warp_->configure_as_source (units::bpm (60.0));
+
+  // Warp is non-identity (source 60 ≠ project 120).
+  ASSERT_FALSE (warp_->is_identity ());
+  // Warp points only cover content [0, 960] at constant 120 BPM.
+  ASSERT_EQ (warp_->warpPoints ().size (), 2u);
+
+  // Content tick 1920 at source BPM 60 = 2.0 seconds.
+  // Timeline: 0-1s at 120 BPM = 1920 ticks, 1-2s at 60 BPM = 960 ticks.
+  // Total timeline delta = 2880.
+  const auto content_secs =
+    ContentTick{ units::ticks (1920.0) }.asQuantity () / units::bpm (60.0);
+  const auto target_timeline = tempo_map_->seconds_to_tick (content_secs);
+
+  // Expected: 2.0s reverse-mapped through the tempo map = 1920 content ticks.
+  const auto recovered =
+    warp_->timelineToContent (TimelineTick{ target_timeline });
+  EXPECT_NEAR (recovered.asDouble (), 1920.0, 0.5)
+    << "Expected exact reverse mapping beyond the warp range";
+}
+
+// Source mode: the QML-facing relative pair agrees with the absolute pair
+// beyond the warp range — the relative delta equals (contentToTimeline - clip
+// position), and the reverse recovers the content position.
+TEST_F (ContentTimeWarpTest, SourceModeRelativePairMatchesAbsoluteBeyondRange)
+{
+  // Tempo halves at tick 1920 — BEYOND the short clip (length 960).
+  tempo_map_wrapper_->addTempoEvent (
+    1920, 60.0, TempoEventWrapper::CurveType::Constant);
+
+  pos_->setTicks (0.0);
+  len_->setTicks (960.0);
+  warp_->configure_as_source (units::bpm (60.0));
+  ASSERT_EQ (warp_->warpPoints ().size (), 2u);
+
+  // Content 1920 is beyond the clip; warp points only cover [0, 960].
+  // Absolute: contentToTimeline(1920) at source 60 = 2.0s → timeline 2880.
+  const double abs_delta =
+    warp_->contentToTimeline (ContentTick{ units::ticks (1920.0) }).asDouble ()
+    - pos_->asTick ().asDouble ();
+
+  // Relative delta equals the absolute conversion minus the clip position.
+  const double rel_delta = warp_->contentToTimelineTicksRelative (1920.0);
+  EXPECT_NEAR (rel_delta, abs_delta, 0.5);
+
+  // Reverse relative lookup recovers the content position.
+  const double recovered = warp_->timelineTicksRelativeToContent (rel_delta);
+  EXPECT_NEAR (recovered, 1920.0, 0.5);
+}
+
 TEST_F (ContentTimeWarpTest, LinearRampProducesDenseWarpPoints)
 {
   // Add a Linear tempo change within the clip span.
@@ -318,16 +423,136 @@ TEST_F (ContentTimeWarpTest, IsNotIdentityDifferentBpm)
   EXPECT_FALSE (warp_->is_identity ());
 }
 
-// In Project mode, timelineLengthTicks is position-independent
-// ((pos + identity(length)) - pos == length). Moving the clip must NOT
-// emit mapChanged — it only causes redundant QML refreshes and cache
-// invalidation (already handled by ArrangerObject's positionChanged).
-TEST_F (ContentTimeWarpTest, ProjectModeDoesNotEmitMapChangedOnPositionMove)
+// In Project mode with source BPM, moving the clip changes which tempo events
+// fall inside it, so mapChanged MUST fire to trigger cache invalidation.
+TEST_F (
+  ContentTimeWarpTest,
+  ProjectModeEmitsMapChangedOnPositionMoveWithSourceBpm)
 {
   warp_->configure_as_project (units::bpm (120.0));
   QSignalSpy spy (warp_.get (), &ContentTimeWarp::mapChanged);
   pos_->setTicks (1920.0);
-  EXPECT_EQ (spy.count (), 0);
+  EXPECT_GE (spy.count (), 1);
+}
+
+// Project mode without source BPM (MIDI clips, unknown BPM): empty identity
+// warp mapping.
+TEST_F (ContentTimeWarpTest, ProjectModeEmptyPointsWithoutSourceBpm)
+{
+  warp_->configure_as_project ();
+  EXPECT_TRUE (warp_->warpPoints ().empty ());
+  EXPECT_TRUE (warp_->is_identity ());
+}
+
+// Project mode without source BPM: the warp mapping stays empty regardless of
+// position or tempo, so neither change produces mapChanged.
+TEST_F (
+  ContentTimeWarpTest,
+  ProjectModeNoSourceBpmDoesNotEmitMapChangedOnPositionMove)
+{
+  warp_->configure_as_project ();
+  QSignalSpy pos_spy (warp_.get (), &ContentTimeWarp::mapChanged);
+  pos_->setTicks (1920.0);
+  EXPECT_EQ (pos_spy.count (), 0);
+
+  // Tempo changes leave the mapping unchanged as well.
+  QSignalSpy tempo_spy (warp_.get (), &ContentTimeWarp::mapChanged);
+  tempo_map_wrapper_->addTempoEvent (
+    3840, 240.0, TempoEventWrapper::CurveType::Constant);
+  EXPECT_EQ (tempo_spy.count (), 0);
+}
+
+//--- Project mode tempo-boundary warp point tests ---
+
+// Musical-mode clip (Project mode with source BPM) must emit identity warp
+// points at each tempo-event boundary so that to_time_warp_map can derive
+// per-segment sample-space stretch anchors that follow the tempo curve.
+TEST_F (ContentTimeWarpTest, ProjectModeWithSourceBpmEmitsBoundaryPoints)
+{
+  // Add a tempo change inside the clip span (tick 3840 = bar 3 at 120 BPM).
+  tempo_map_wrapper_->addTempoEvent (
+    3840, 240.0, TempoEventWrapper::CurveType::Constant);
+
+  warp_->configure_as_project (units::bpm (120.0));
+
+  // With tempo events at tick 0 and 3840, plus the terminal at length 7680:
+  // boundary at content 0, boundary at content 3840, terminal at content 7680.
+  // That's 3 warp points (no dense sampling needed for Constant curve).
+  EXPECT_EQ (warp_->warpPoints ().size (), 3u);
+}
+
+// All Project-mode warp points must have delta == content (identity in tick
+// space). The tempo-following happens in sample space via to_time_warp_map.
+TEST_F (ContentTimeWarpTest, ProjectModeBoundaryPointsAreIdentity)
+{
+  tempo_map_wrapper_->addTempoEvent (
+    3840, 240.0, TempoEventWrapper::CurveType::Constant);
+
+  warp_->configure_as_project (units::bpm (120.0));
+
+  for (const auto &wp : warp_->warpPoints ())
+    {
+      EXPECT_NEAR (
+        wp.content_ticks.asDouble (), wp.timeline_delta_ticks.asDouble (), 0.5)
+        << "Project mode warp point must be identity (delta == content)";
+    }
+  EXPECT_TRUE (warp_->is_identity ());
+}
+
+// Project mode with a Linear tempo ramp must emit dense warp points to
+// approximate the curve in sample space.
+TEST_F (ContentTimeWarpTest, ProjectModeLinearRampProducesDensePoints)
+{
+  tempo_map_wrapper_->addTempoEvent (
+    1920, 180.0, TempoEventWrapper::CurveType::Linear);
+
+  warp_->configure_as_project (units::bpm (120.0));
+
+  // Linear ramp → dense sampling at ~50ms cadence.
+  EXPECT_GT (warp_->warpPoints ().size (), 5u);
+
+  // All points still identity.
+  EXPECT_TRUE (warp_->is_identity ());
+}
+
+// Project mode with source BPM must rebuild when tempo events change.
+TEST_F (ContentTimeWarpTest, ProjectModeWithSourceBpmRespondsToTempoChange)
+{
+  warp_->configure_as_project (units::bpm (120.0));
+  const auto points_before = warp_->warpPoints ().size ();
+
+  tempo_map_wrapper_->addTempoEvent (
+    3840, 240.0, TempoEventWrapper::CurveType::Constant);
+
+  const auto points_after = warp_->warpPoints ().size ();
+  EXPECT_GT (points_after, points_before);
+}
+
+// Musical-mode clip (Project mode) with constant tempo matching source BPM:
+// sample-space identity → no stretch needed.
+TEST_F (ContentTimeWarpTest, ProjectModeConstantTempoIsSampleSpaceIdentity)
+{
+  warp_->configure_as_project (units::bpm (120.0));
+
+  auto warp_map = to_time_warp_map (
+    warp_->warpPoints (), *tempo_map_, TimelineTick{ units::ticks (0.0) },
+    units::bpm (120.0), units::samples (176400));
+  EXPECT_TRUE (is_sample_space_identity (warp_map.anchors));
+}
+
+// Musical-mode clip (Project mode) with tempo automation: sample-space
+// anchors trace the tempo curve → stretch IS needed.
+TEST_F (ContentTimeWarpTest, ProjectModeTempoAutomationNeedsStretch)
+{
+  tempo_map_wrapper_->addTempoEvent (
+    3840, 240.0, TempoEventWrapper::CurveType::Constant);
+
+  warp_->configure_as_project (units::bpm (120.0));
+
+  auto warp_map = to_time_warp_map (
+    warp_->warpPoints (), *tempo_map_, TimelineTick{ units::ticks (0.0) },
+    units::bpm (120.0), units::samples (176400));
+  EXPECT_FALSE (is_sample_space_identity (warp_map.anchors));
 }
 
 //--- Warped mode tests ---

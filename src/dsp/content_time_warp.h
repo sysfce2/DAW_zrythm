@@ -65,7 +65,9 @@ public:
    * relative to the clip's start. Computed as:
    *   clip_position.ticks() + warp_lookup(content_ticks)
    *
-   * Null-safe: returns the content ticks unchanged if clip_position is null.
+   * Null-safe in Project/Warped modes: if clip_position is null, treats the
+   * clip start as tick 0. Source mode requires clip_position to be non-null
+   * (see @ref source_content_to_timeline).
    *
    * @note Main-thread only. Traverses @ref warp_points_, which is mutated by
    * @c rebuild() on the main thread — not real-time safe, no synchronization.
@@ -81,6 +83,22 @@ public:
    * Used for positioning items inside a clip view.
    */
   Q_INVOKABLE double contentToTimelineTicksRelative (double contentTicks) const;
+
+  /**
+   * @brief Convert timeline ticks RELATIVE to the clip's start position back to
+   * content ticks.
+   *
+   * The inverse of @ref contentToTimelineTicksRelative. Given a position
+   * expressed as a timeline offset from the clip start (the warp delta),
+   * returns the corresponding position within the clip's content. Used to map
+   * mouse positions in a clip-editor ruler back onto the clip's content
+   * coordinate space.
+   *
+   * @note Main-thread only (delegates to @ref timelineToContent).
+   */
+  Q_INVOKABLE double
+  timelineTicksRelativeToContent (double timelineTicksRelative) const;
+
   /**
    * @brief Convert content ticks to ABSOLUTE timeline samples.
    *
@@ -128,6 +146,15 @@ private:
   void connect_for_mode ();
   void disconnect_all ();
 
+  // Source-mode exact conversions (bypass warp points for exact results
+  // even beyond the current clip length). Both are pure functions of the
+  // tempo map, clip_position_, and source BPM.
+  //
+  // @pre clip_position_ != nullptr — Source mode requires a known clip
+  //      start position (asserted).
+  TimelineTick source_content_to_timeline (ContentTick content) const;
+  ContentTick  source_timeline_to_content (TimelineTick timeline) const;
+
   enum class Mode
   {
     Project,
@@ -152,8 +179,8 @@ private:
  * @brief Piecewise-linear lookup on a span of warp points.
  *
  * Empty span returns content_ticks unchanged (identity).
- * Values before the first warp point clamp to the first point's delta.
- * Extrapolation beyond the last warp point uses the last segment's slope.
+ * Extrapolation before the first / beyond the last warp point uses the
+ * nearest segment's slope.
  */
 TimelineTick
 warp_lookup (
@@ -163,7 +190,7 @@ warp_lookup (
 /**
  * @brief Reverse piecewise-linear lookup: timeline delta → content ticks.
  *
- * The inverse of @ref warp_lookup. Same clamping/extrapolation rules.
+ * The inverse of @ref warp_lookup. Same extrapolation rules.
  */
 ContentTick
 reverse_warp_lookup (
