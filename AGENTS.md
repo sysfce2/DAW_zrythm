@@ -244,6 +244,7 @@ Zrythm makes extensive use of modern C++ features:
 - Prefer pimpl (pointer to implementation) for non-trivial class members that don't need to be exposed in the header, to reduce include dependencies and improve compile times
 - API doc comments (Doxygen `@brief`, `@param`, `@return`) must describe the contract — what the function does, its parameters, return value, preconditions, and edge cases — not who calls it or why it was introduced. Mentioning specific callers (e.g. "exposed for use by X") couples the docs to internal architecture and goes stale when those callers change; design rationale belongs in commit messages or architecture docs, not the method's API comment
 - When a class derives the same template twice (e.g. `TempoObjectManager` derives both `ArrangerObjectOwner<TempoObject>` and `ArrangerObjectOwner<TimeSignatureObject>`), member lookup is ambiguous. Disambiguate with explicit base-class scope resolution (e.g. `manager->structure::arrangement::ArrangerObjectOwner<...TempoObject>::get_sorted_children_view()`), not `static_cast`
+- **Comments describe what, not why-not**: In code comments, state what the code or test does objectively. Do not narrate bug history, explain what a previous version did wrong, or describe what must "not" happen — commit messages and architecture docs are the right place for that
 
 ### Unit Safety
 
@@ -354,7 +355,7 @@ Some arranger objects are [loopable](src/structure/arrangement/loopable_object.h
 - [ScopedJuceQApplication](tests/helpers/scoped_juce_qapplication.h): Inherits from ScopedQCoreApplication and also runs the JUCE message loop inside Qt's event loop. Only to be used when we can't avoid dependence on JUCE's message loop.
 - [MockProcessable, MockTransport](tests/unit/dsp/graph_helpers.h)
 - [MockTrack](tests/unit/structure/tracks/mock_track.h)
-- Logging can be enabled in tests by calling `init_logging(utils::LoggerType::Test)` (from `src/utils/logger.h`)
+- Logging can be enabled in tests by calling `init_logging(utils::LoggerType::Test)` (`#include "utils/logger.h"`)
 
 ---
 
@@ -381,4 +382,4 @@ Some arranger objects are [loopable](src/structure/arrangement/loopable_object.h
 
 ---
 
-*This document is maintained by the Zrythm development team. Last updated: 2026-06-23*
+*This document is maintained by the Zrythm development team. Last updated: 2026-07-04*
