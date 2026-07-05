@@ -82,6 +82,7 @@ private:
   };
 
   void rebuild ();
+  void rebuild_and_notify ();
   void connect_to_clip_model ();
   void disconnect_from_clip_model ();
   void connect_descriptor_signals ();

@@ -10,12 +10,12 @@ import ZrythmStyle
 GridLayout {
   id: root
 
+  required property AutomationClip automationClip
   required property AutomationEditor automationEditor
   required property ClipEditor clipEditor
   readonly property Project project: session.project
-  required property ProjectSession session
-  required property AutomationClip automationClip
   readonly property ArrangerObjectSelectionOperator selectionOperator: root.session.createArrangerObjectSelectionOperator(arrangerSelectionModel)
+  required property ProjectSession session
 
   columnSpacing: 0
   columns: 3
@@ -42,8 +42,9 @@ GridLayout {
     id: ruler
 
     Layout.fillWidth: true
-    editorSettings: root.automationEditor
     clipObject: root.automationClip
+    clipOperator: root.session.clipOperator
+    editorSettings: root.automationEditor
     snapGrid: root.session.uiState.snapGridEditor
     tempoMap: root.project.tempoMap
     track: root.project.tracklist.getTrackForTimelineObject(root.automationClip)
@@ -72,7 +73,6 @@ GridLayout {
 
   UnifiedProxyModel {
     id: unifiedObjectsModel
-
   }
 
   ItemSelectionModel {

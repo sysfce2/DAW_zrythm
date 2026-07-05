@@ -160,6 +160,31 @@ public:
   void          setTrackBounds (bool track);
   Q_SIGNAL void trackBoundsChanged (bool track);
 
+  /**
+   * @brief Set the three loop positions atomically, bypassing the per-position
+   * clamping constraints.
+   *
+   * Each position's @ref dsp::Position::setTicks constraint normally clamps
+   * against the *current* sibling values, which corrupts values when setting
+   * an interdependent triplet sequentially (e.g. expanding @p loop_start beyond
+   * the current @p loop_end). This method writes all three without per-set
+   * clamping, so an interdependent target is applied as-is.
+   *
+   * Inputs are clamped holistically to the loop invariants
+   * (@p loop_end >= max(@p clip_start, @p loop_start) + 1, all >= 0);
+   * already-valid triplets are applied unchanged.
+   *
+   * If length-tracking (@ref trackBounds) is on, it is disabled for the
+   * duration of the set so the explicit values are not overwritten by the
+   * length-tracking connection. Tracking is left disabled; callers that want
+   * it re-engaged (e.g. when the result is the default range) must call
+   * @ref setTrackBounds themselves.
+   */
+  void set_loop_range (
+    dsp::ContentTick clip_start,
+    dsp::ContentTick loop_start,
+    dsp::ContentTick loop_end);
+
   bool          looped () const;
   Q_SIGNAL void loopedChanged ();
 

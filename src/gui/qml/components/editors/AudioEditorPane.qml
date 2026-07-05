@@ -12,10 +12,10 @@ import ZrythmGui
 GridLayout {
   id: root
 
+  required property AudioClip audioClip
   readonly property AudioClipEditor audioEditor: clipEditor.audioEditor
   required property ClipEditor clipEditor
   readonly property Project project: session.project
-  required property AudioClip audioClip
   required property ProjectSession session
   readonly property Track track: project.tracklist.getTrackForTimelineObject(root.audioClip)
 
@@ -26,15 +26,15 @@ GridLayout {
 
   ZrythmToolBar {
     id: editorToolbar
-
   }
 
   Ruler {
     id: ruler
 
     Layout.fillWidth: true
-    editorSettings: root.audioEditor
     clipObject: root.audioClip
+    clipOperator: root.session.clipOperator
+    editorSettings: root.audioEditor
     snapGrid: root.session.uiState.snapGridEditor
     tempoMap: root.project.tempoMap
     track: root.track
@@ -63,7 +63,6 @@ GridLayout {
 
   UnifiedProxyModel {
     id: emptyModel
-
   }
 
   ItemSelectionModel {

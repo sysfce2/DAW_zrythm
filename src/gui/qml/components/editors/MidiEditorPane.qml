@@ -11,21 +11,20 @@ import ZrythmStyle
 GridLayout {
   id: root
 
-  required property ClipEditor clipEditor
-  required property MidiEditor midiEditor
-  readonly property Project project: session.project
-  required property MidiClip midiClip
-  readonly property ArrangerObjectSelectionOperator selectionOperator: root.session.createArrangerObjectSelectionOperator(arrangerSelectionModel)
-  required property ProjectSession session
-  readonly property Track track: root.project.tracklist.getTrackForTimelineObject(root.midiClip)
-
-  readonly property ChordTrack chordTrack: root.project.tracklist.singletonTracks.chordTrack ?? null
-  readonly property int highlightMode: GlobalState.application.appSettings.pianoRollHighlight
   // Resolved at the playhead and updated imperatively so they stay current when
   // the chord track changes structurally or via in-place descriptor edits while
   // the playhead is stationary (a readonly binding would miss those cases).
   property ChordObject activeChord: null
   property ScaleObject activeScale: null
+  readonly property ChordTrack chordTrack: root.project.tracklist.singletonTracks.chordTrack ?? null
+  required property ClipEditor clipEditor
+  readonly property int highlightMode: GlobalState.application.appSettings.pianoRollHighlight
+  required property MidiClip midiClip
+  required property MidiEditor midiEditor
+  readonly property Project project: session.project
+  readonly property ArrangerObjectSelectionOperator selectionOperator: root.session.createArrangerObjectSelectionOperator(arrangerSelectionModel)
+  required property ProjectSession session
+  readonly property Track track: root.project.tracklist.getTrackForTimelineObject(root.midiClip)
 
   function _updateActiveChordAndScale() {
     if (root.chordTrack) {
@@ -53,6 +52,7 @@ GridLayout {
 
     target: root.project.transport.playhead
   }
+
   Connections {
     function onContentChanged() {
       root._updateActiveChordAndScale();
@@ -60,6 +60,7 @@ GridLayout {
 
     target: root.chordTrack?.chordClips ?? null
   }
+
   Connections {
     function onContentChanged() {
       root._updateActiveChordAndScale();
@@ -106,8 +107,9 @@ GridLayout {
     id: ruler
 
     Layout.fillWidth: true
-    editorSettings: root.midiEditor
     clipObject: root.midiClip
+    clipOperator: root.session.clipOperator
+    editorSettings: root.midiEditor
     snapGrid: root.session.uiState.snapGridEditor
     tempoMap: root.project.tempoMap
     track: root.project.tracklist.getTrackForTimelineObject(root.midiClip)
@@ -145,13 +147,13 @@ GridLayout {
     PianoRollKeys {
       id: pianoRollKeys
 
-      height: implicitHeight
-      midiEditor: root.midiEditor
-      noteActivityProvider: noteActivityProvider
-      chordTrack: root.chordTrack
       activeChord: root.activeChord
       activeScale: root.activeScale
+      chordTrack: root.chordTrack
+      height: implicitHeight
       highlightMode: root.highlightMode
+      midiEditor: root.midiEditor
+      noteActivityProvider: noteActivityProvider
     }
 
     Synchronizer {
@@ -196,12 +198,12 @@ GridLayout {
 
     Layout.fillHeight: true
     Layout.fillWidth: true
-    chordTrack: root.chordTrack
-    highlightMode: root.highlightMode
     arrangerContentHeight: pianoRollKeys.height
     arrangerSelectionModel: arrangerSelectionModel
+    chordTrack: root.chordTrack
     clipEditor: root.clipEditor
     dragState: editorDragState
+    highlightMode: root.highlightMode
     midiEditor: root.midiEditor
     objectCreator: root.session.arrangerObjectCreator
     ruler: ruler

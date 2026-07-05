@@ -649,6 +649,18 @@ Item {
           preventStealing: true
           z: 1
 
+          // A stolen/canceled gesture (touch recognizer, popup hide) aborts
+          // without committing: reset the visual drag state and any global
+          // cursor override. Arranger drags preview visually and commit only in
+          // onReleased, so there is no model state to revert here.
+          onCanceled: {
+            action = Arranger.None;
+            root.dragState.reset();
+            root.wasClickedObjectSelectedOnPress = false;
+            root.clickedUnifiedIndexOnPress = null;
+            root.updateCursor();
+            CursorManager.unsetCursor();
+          }
           onDoubleClicked: mouse => {
             console.log("doubleClicked", action);
             if (mouse.button === Qt.LeftButton) {
@@ -754,7 +766,8 @@ Item {
                   }
                   root.selectionOperator.resizeObjects(resizeType, ArrangerObjectSelectionOperator.FromStart, delta);
                 } else {
-                  // Bounds/LoopPoints: GPU transform on real delegates
+                  // Bounds/LoopPoints: visual transform on real delegates
+                  root.dragState.isLoopResize = (resizeType === ArrangerObjectSelectionOperator.LoopPoints);
                   if (root.dragState.dragMode !== ArrangerDragState.DragMode.ResizeFromStart) {
                     root.dragState.dragMode = ArrangerDragState.DragMode.ResizeFromStart;
                     const obj = root.getObjectAtCurrentIndex();
@@ -795,7 +808,8 @@ Item {
                     }
                     root.selectionOperator.resizeObjects(resizeType, ArrangerObjectSelectionOperator.FromEnd, delta);
                   } else {
-                    // Bounds/LoopPoints: GPU transform on real delegates
+                    // Bounds/LoopPoints: visual transform on real delegates
+                    root.dragState.isLoopResize = (resizeType === ArrangerObjectSelectionOperator.LoopPoints);
                     if (root.dragState.dragMode !== ArrangerDragState.DragMode.ResizeFromEnd) {
                       root.dragState.dragMode = ArrangerDragState.DragMode.ResizeFromEnd;
                       const obj = root.getObjectAtCurrentIndex();

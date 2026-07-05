@@ -46,6 +46,9 @@ ProjectSession::ProjectSession (
           *ui_state_->snapGridTimeline (),
           *ui_state_->snapGridEditor (),
           this)),
+      clip_operator_ (
+        utils::make_qobject_unique<
+          actions::ClipOperator> (project_->get_registry (), *undo_stack_, this)),
       track_creator_ (
         utils::make_qobject_unique<actions::TrackCreator> (
           *undo_stack_,
@@ -376,6 +379,12 @@ zrythm::actions::ArrangerObjectCreator *
 ProjectSession::arrangerObjectCreator () const
 {
   return arranger_object_creator_.get ();
+}
+
+zrythm::actions::ClipOperator *
+ProjectSession::clipOperator () const
+{
+  return clip_operator_.get ();
 }
 
 zrythm::actions::TrackCreator *

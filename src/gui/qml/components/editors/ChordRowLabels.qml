@@ -13,25 +13,30 @@ Column {
 
   required property ChordRowListModel chordRowModel
   required property ChordTrack chordTrack
+
+  // The number of model rows, sourced from the Repeater's count.
+  readonly property int rowCount: chordRowRepeater.count
   required property int rowHeight
   required property UndoStack undoStack
 
-  // Emitted when a row header is double-clicked (batch edit request).
-  signal rowEditRequested (int row)
-
   // Emitted when the "+" new-chord row is clicked.
-  signal newChordRequested ()
+  signal newChordRequested
+
+  // Emitted when a row header is double-clicked (batch edit request).
+  signal rowEditRequested(int row)
 
   spacing: 0
 
   Repeater {
+    id: chordRowRepeater
+
     model: root.chordRowModel
 
     delegate: AbstractButton {
       id: rowLabel
 
-      required property string chordName
       required property ChordDescriptor chordDescriptor
+      required property string chordName
       required property int chordObjectCount
       required property int index
 
@@ -62,18 +67,18 @@ Column {
         }
       }
 
+      onDoubleClicked: {
+        if (root.chordTrack && rowLabel.chordDescriptor)
+          root.chordTrack.auditionChord(rowLabel.chordDescriptor, false);
+        root.rowEditRequested(rowLabel.index);
+      }
       onPressed: {
         if (root.chordTrack && rowLabel.chordDescriptor)
-          root.chordTrack.auditionChord (rowLabel.chordDescriptor, true);
+          root.chordTrack.auditionChord(rowLabel.chordDescriptor, true);
       }
       onReleased: {
         if (root.chordTrack && rowLabel.chordDescriptor)
-          root.chordTrack.auditionChord (rowLabel.chordDescriptor, false);
-      }
-      onDoubleClicked: {
-        if (root.chordTrack && rowLabel.chordDescriptor)
-          root.chordTrack.auditionChord (rowLabel.chordDescriptor, false);
-        root.rowEditRequested (rowLabel.index);
+          root.chordTrack.auditionChord(rowLabel.chordDescriptor, false);
       }
     }
   }
@@ -96,6 +101,6 @@ Column {
       verticalAlignment: Text.AlignVCenter
     }
 
-    onClicked: root.newChordRequested ()
+    onClicked: root.newChordRequested()
   }
 }

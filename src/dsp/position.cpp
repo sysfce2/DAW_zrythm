@@ -29,6 +29,17 @@ Position::setTicks (double ticks)
 }
 
 void
+Position::set_ticks_without_constraint (double ticks)
+{
+  auto tick_value = units::ticks (ticks);
+  if (!qFuzzyCompare (ticks_.in (units::ticks), tick_value.in (units::ticks)))
+    {
+      ticks_ = tick_value;
+      Q_EMIT positionChanged ();
+    }
+}
+
+void
 to_json (nlohmann::json &j, const Position &pos)
 {
   j[Position::kValue] = pos.ticks_.in (units::ticks);

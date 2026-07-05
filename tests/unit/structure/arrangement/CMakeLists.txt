@@ -15,6 +15,7 @@ add_executable(zrythm_structure_arrangement_unit_tests
   automation_clip_test.cpp
   chord_object_test.cpp
   chord_clip_test.cpp
+  clip_test.cpp
   colored_object_test.cpp
   fadeable_object_test.cpp
   marker_test.cpp

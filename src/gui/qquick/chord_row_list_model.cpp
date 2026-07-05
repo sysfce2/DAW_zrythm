@@ -125,6 +125,15 @@ ChordRowListModel::rebuild ()
 }
 
 void
+ChordRowListModel::rebuild_and_notify ()
+{
+  beginResetModel ();
+  rebuild ();
+  endResetModel ();
+  Q_EMIT contentChanged ();
+}
+
+void
 ChordRowListModel::connect_to_clip_model ()
 {
   using structure::arrangement::ArrangerObjectListModel;
@@ -134,18 +143,12 @@ ChordRowListModel::connect_to_clip_model ()
   connect (model, &QAbstractItemModel::rowsInserted, this, [this] () {
     disconnect_descriptor_signals ();
     connect_descriptor_signals ();
-    beginResetModel ();
-    rebuild ();
-    endResetModel ();
-    Q_EMIT contentChanged ();
+    rebuild_and_notify ();
   });
   connect (model, &QAbstractItemModel::rowsRemoved, this, [this] () {
     disconnect_descriptor_signals ();
     connect_descriptor_signals ();
-    beginResetModel ();
-    rebuild ();
-    endResetModel ();
-    Q_EMIT contentChanged ();
+    rebuild_and_notify ();
   });
   // Position/property changes: forward for span recomputation only.
   // Grouping depends on descriptor fields, not positions, so no rebuild here.
@@ -169,10 +172,7 @@ ChordRowListModel::connect_descriptor_signals ()
       auto * desc = co->chordDescriptor ();
       descriptor_connections_.push_back (
         connect (desc, &dsp::ChordDescriptor::changed, this, [this] () {
-          beginResetModel ();
-          rebuild ();
-          endResetModel ();
-          Q_EMIT contentChanged ();
+          rebuild_and_notify ();
         }));
     }
 }

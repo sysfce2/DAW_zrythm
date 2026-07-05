@@ -61,6 +61,12 @@ public:
 
   void setTicks (double ticks);
 
+  /// Set ticks without applying @ref constraint_. Intended for atomic batch
+  /// updates by callers that maintain position invariants themselves
+  /// (e.g. @ref structure::arrangement::Clip::setLoopRange). Still emits
+  /// @ref positionChanged when the value actually changes.
+  void set_ticks_without_constraint (double ticks);
+
   Q_INVOKABLE void addTicks (double ticks)
   {
     setTicks (this->ticks () + ticks);

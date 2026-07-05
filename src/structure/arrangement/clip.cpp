@@ -247,6 +247,31 @@ Clip::setTrackBounds (bool track)
     }
 }
 
+void
+Clip::set_loop_range (
+  dsp::ContentTick clip_start,
+  dsp::ContentTick loop_start,
+  dsp::ContentTick loop_end)
+{
+  // Clamp to the loop invariants holistically (not per-position): an
+  // interdependent target survives, while out-of-range inputs stay valid.
+  const auto zero_tick = dsp::ContentTick{ units::ticks (0.0) };
+  const auto one_tick = dsp::ContentTick{ units::ticks (1.0) };
+  clip_start = max (clip_start, zero_tick);
+  loop_start = max (loop_start, zero_tick);
+  loop_end = max (loop_end, max (clip_start, loop_start) + one_tick);
+
+  // Disable length-tracking so the explicit sets below are not overridden by
+  // the length-tracking connection (which would reset the positions to the
+  // default range).
+  if (track_bounds_)
+    setTrackBounds (false);
+
+  clip_start_pos_->set_ticks_without_constraint (clip_start.asDouble ());
+  loop_start_pos_->set_ticks_without_constraint (loop_start.asDouble ());
+  loop_end_pos_->set_ticks_without_constraint (loop_end.asDouble ());
+}
+
 int
 Clip::get_num_loops (bool count_incomplete) const
 {

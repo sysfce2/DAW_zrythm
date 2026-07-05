@@ -5,6 +5,7 @@
 
 #include "actions/arranger_object_creator.h"
 #include "actions/arranger_object_selection_operator.h"
+#include "actions/clip_operator.h"
 #include "actions/file_importer.h"
 #include "actions/plugin_importer.h"
 #include "actions/plugin_operator.h"
@@ -53,6 +54,8 @@ class ProjectSession : public QObject
     zrythm::actions::ArrangerObjectCreator * arrangerObjectCreator READ
       arrangerObjectCreator CONSTANT FINAL)
   Q_PROPERTY (
+    zrythm::actions::ClipOperator * clipOperator READ clipOperator CONSTANT FINAL)
+  Q_PROPERTY (
     zrythm::actions::TrackCreator * trackCreator READ trackCreator CONSTANT FINAL)
   Q_PROPERTY (
     zrythm::actions::PluginImporter * pluginImporter READ pluginImporter
@@ -86,6 +89,7 @@ public:
   structure::project::ProjectUiState *     uiState () const;
   undo::UndoStack *                        undoStack () const;
   zrythm::actions::ArrangerObjectCreator * arrangerObjectCreator () const;
+  zrythm::actions::ClipOperator *          clipOperator () const;
   zrythm::actions::TrackCreator *          trackCreator () const;
   actions::PluginImporter *                pluginImporter () const;
   actions::PluginOperator *                pluginOperator () const;
@@ -165,6 +169,7 @@ private:
   // Action handlers for user operations
   utils::QObjectUniquePtr<actions::ArrangerObjectCreator>
                                                    arranger_object_creator_;
+  utils::QObjectUniquePtr<actions::ClipOperator>   clip_operator_;
   utils::QObjectUniquePtr<actions::TrackCreator>   track_creator_;
   utils::QObjectUniquePtr<actions::PluginImporter> plugin_importer_;
   utils::QObjectUniquePtr<actions::PluginOperator> plugin_operator_;
