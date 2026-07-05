@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: © 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include <ranges>
 #include <stdexcept>
 
 #include "dsp/chord_preset.h"
@@ -75,7 +76,7 @@ ChordPadBank::insertChord (
 
   beginInsertRows ({}, index, index);
   chords_.insert (
-    std::next (chords_.begin (), index),
+    std::ranges::next (chords_.begin (), index),
     zrythm::utils::make_qobject_unique<dsp::ChordDescriptor> (
       root, type, accent, inversion, bass, this));
   endInsertRows ();

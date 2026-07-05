@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <ranges>
 
 #include "dsp/content_time_warp.h"
 #include "dsp/tempo_map.h"
@@ -400,7 +401,7 @@ warp_lookup (
 
   auto upper = std::ranges::upper_bound (
     warp_points, content_ticks, {}, &ContentTimeWarp::WarpPoint::content_ticks);
-  auto lower = std::prev (upper);
+  auto lower = std::ranges::prev (upper);
 
   const auto dc = upper->content_ticks - lower->content_ticks;
   const auto dd = upper->timeline_delta_ticks - lower->timeline_delta_ticks;
@@ -449,7 +450,7 @@ reverse_warp_lookup (
   auto upper = std::ranges::upper_bound (
     warp_points, timeline_delta_ticks, {},
     &ContentTimeWarp::WarpPoint::timeline_delta_ticks);
-  auto lower = std::prev (upper);
+  auto lower = std::ranges::prev (upper);
 
   const auto dd = upper->timeline_delta_ticks - lower->timeline_delta_ticks;
   const auto dc = upper->content_ticks - lower->content_ticks;

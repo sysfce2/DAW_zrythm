@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2024-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include <ranges>
+
 #include "structure/tracks/track_lane_list.h"
 #include "utils/views.h"
 
@@ -122,7 +124,7 @@ TrackLaneList::insertLane (size_t index)
   beginInsertRows (
     QModelIndex (), static_cast<int> (index), static_cast<int> (index));
   lanes_.insert (
-    std::next (std::begin (lanes_), static_cast<int> (index)),
+    std::ranges::next (std::begin (lanes_), static_cast<int> (index)),
     utils::make_qobject_unique<TrackLane> (dependencies_, this));
   endInsertRows ();
 

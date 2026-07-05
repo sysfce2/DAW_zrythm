@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include <ranges>
+
 #include "plugins/plugin_all.h"
 #include "structure/tracks/track_all.h"
 #include "structure/tracks/track_collection.h"
@@ -323,7 +325,7 @@ TrackCollection::reattach_track (const TrackUuidReference &track_id, int pos)
 {
   pos = std::clamp (pos, 0, static_cast<int> (tracks_.size ()));
   beginInsertRows ({}, pos, pos);
-  tracks_.insert (std::next (tracks_.begin (), pos), track_id);
+  tracks_.insert (std::ranges::next (tracks_.begin (), pos), track_id);
   endInsertRows ();
 }
 

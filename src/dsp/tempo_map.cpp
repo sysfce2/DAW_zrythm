@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 
@@ -394,7 +395,7 @@ FixedPpqTempoMap<PPQ>::tick_to_musical_position (units::tick_t tick) const
       const auto prev_ticks_per_bar = prev_quarters_per_bar * get_ppq ();
 
       // Ticks from this signature to next
-      auto       next = std::next (prev);
+      auto       next = std::ranges::next (prev);
       const auto end_tick =
         (next != time_sig_events.end ()) ? next->tick : sigEvent.tick;
       const auto segment_ticks = end_tick - prev->tick;

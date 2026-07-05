@@ -47,7 +47,7 @@ eval_at_virt_tick (const auto &sorted_points, dsp::ContentTick virt_tick)
   if (it == sorted_points.begin () || it == sorted_points.end ())
     return { sorted_points.back ()->value (), sorted_points.back () };
 
-  const auto * prev_ap = *std::prev (it);
+  const auto * prev_ap = *std::ranges::prev (it);
   const auto * next_ap = *it;
 
   const auto prev_tick = tick_of (prev_ap);

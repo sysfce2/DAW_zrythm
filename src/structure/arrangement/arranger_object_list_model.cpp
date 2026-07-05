@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include <ranges>
+
 #include "structure/arrangement/arranger_object_all.h"
 #include "structure/arrangement/arranger_object_list_model.h"
 #include "utils/math_utils.h"
@@ -170,7 +172,8 @@ ArrangerObjectListModel::insertObject (
 
   beginInsertRows (QModelIndex (), index, index);
   objects_.get<random_access_index> ().insert (
-    std::next (objects_.get<random_access_index> ().begin (), index), object);
+    std::ranges::next (objects_.get<random_access_index> ().begin (), index),
+    object);
   endInsertRows ();
   return true;
 }
@@ -185,8 +188,8 @@ ArrangerObjectListModel::removeRows (int row, int count, const QModelIndex &pare
 
   beginRemoveRows ({}, row, row + count - 1);
   auto &container = objects_.get<random_access_index> ();
-  auto  first = std::next (container.begin (), row);
-  auto  last = std::next (first, count);
+  auto  first = std::ranges::next (container.begin (), row);
+  auto  last = std::ranges::next (first, count);
   container.erase (first, last);
   endRemoveRows ();
   return true;

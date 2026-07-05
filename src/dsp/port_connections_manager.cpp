@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include <algorithm>
+#include <ranges>
 
 #include <fmt/std.h>
 
@@ -267,7 +268,7 @@ PortConnectionsManager::remove_connection (const size_t idx)
   z_debug (
     "Disconnected <{}>; have {} connections", *conn, connections_.size ());
 
-  connections_.erase (std::next (connections_.begin (), (int) idx));
+  connections_.erase (std::ranges::next (connections_.begin (), (int) idx));
 
   regenerate_hashtables ();
 }

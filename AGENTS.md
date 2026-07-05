@@ -236,7 +236,7 @@ Zrythm makes extensive use of modern C++ features:
 - Use `std::span` instead of array pointers and sizes; for read-only accessors returning a collection, return `std::span<const T>` (a lightweight view) rather than `const std::vector<T>&`, so callers can't mutate the contents and the interface isn't tied to a specific container type
 - Utilize `std::views` where possible to make code more readable, for example for filtering, transforming, or even to simply loop n times using `std::views::iota`
 - Avoid implicit conversions (`int` to `float`, `double` to `float`, etc.)
-- Use `std::next` and `std::prev` instead of adding/subtracting to iterators directly
+- Prefer `std::ranges::next` and `std::ranges::prev` over the legacy `std::next`/`std::prev` (and over adding/subtracting to iterators directly) — the `std::ranges::` versions work correctly on range-adaptor iterators where the legacy ones don't
 - Prefer `std::erase_if` over `std::remove_if` + `erase()`
 - Avoid variable shadowing: use descriptive prefixes (e.g., `project_foo` instead of `foo`) when local variables would shadow class members
 - Use west const style for simple const qualifiers (e.g., `const int x`, not `int const x`)

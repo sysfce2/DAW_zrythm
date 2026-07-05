@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include <algorithm>
+#include <ranges>
 
 #include <fmt/std.h>
 
@@ -294,7 +295,7 @@ eval_at_virt_tick (const auto &sorted_points, dsp::ContentTick virt_tick)
     }
 
   // Interpolation between prev_ap and next_ap.
-  const auto * prev_ap = *std::prev (it);
+  const auto * prev_ap = *std::ranges::prev (it);
   const auto   prev_tick = tick_of (prev_ap);
   if (next_tick <= prev_tick)
     return { prev_ap->value (), prev_ap, next_ap };
