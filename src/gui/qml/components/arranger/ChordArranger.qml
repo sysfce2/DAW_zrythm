@@ -119,6 +119,7 @@ Arranger {
       dragDeltaY: root.dragState.dragDeltaY
       dragMode: root.dragState.dragMode
       height: root.rowHeight
+      isLoopResize: root.dragState.isLoopResize
       model: chordObjectsRepeater.model
       pxPerTick: root.ruler.pxPerTick
       scrollViewWidth: root.scrollViewWidth

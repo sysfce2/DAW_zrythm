@@ -8,11 +8,20 @@ import ZrythmStyle
 ClipBaseView {
   id: root
 
+  readonly property AudioClip audioClip: arrangerObject as AudioClip
   property bool isLanePart: false
   required property TrackLane lane
-  readonly property AudioClip audioClip: arrangerObject as AudioClip
   required property TempoMap tempoMap
 
+  clipContent: AudioClipContent {
+    audioClip: root.audioClip
+    contentHeight: root.contentHeight
+    contentWidth: root.contentWidth
+    loopPreview: root.loopPreview
+    referenceWidth: root.referenceWidth
+    referenceX: root.referenceX
+    tempoMap: root.tempoMap
+  }
   headerExtra: Item {
     id: badgeContainer
 
@@ -134,11 +143,5 @@ ClipBaseView {
         verticalCenter: parent.verticalCenter
       }
     }
-  }
-  clipContent: AudioClipContent {
-    contentHeight: root.contentHeight
-    contentWidth: root.contentWidth
-    audioClip: root.audioClip
-    tempoMap: root.tempoMap
   }
 }

@@ -7,12 +7,15 @@ import Zrythm
 ClipBaseView {
   id: root
 
-  required property AutomationTrack automationTrack
   readonly property AutomationClip automationClip: arrangerObject as AutomationClip
+  required property AutomationTrack automationTrack
 
   clipContent: AutomationClipContent {
+    automationClip: root.automationClip
     contentHeight: root.contentHeight
     contentWidth: root.contentWidth
-    automationClip: root.automationClip
+    loopPreview: root.loopPreview
+    referenceWidth: root.referenceWidth
+    referenceX: root.referenceX
   }
 }

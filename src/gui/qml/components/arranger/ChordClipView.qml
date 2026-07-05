@@ -12,8 +12,11 @@ ClipBaseView {
   readonly property ChordClip chordClip: arrangerObject as ChordClip
 
   clipContent: ChordClipContent {
+    chordClip: root.chordClip
     contentHeight: root.contentHeight
     contentWidth: root.contentWidth
-    chordClip: root.chordClip
+    loopPreview: root.loopPreview
+    referenceWidth: root.referenceWidth
+    referenceX: root.referenceX
   }
 }

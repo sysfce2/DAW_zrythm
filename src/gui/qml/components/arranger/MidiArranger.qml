@@ -91,6 +91,7 @@ Arranger {
       dragDeltaY: root.dragState.dragDeltaY
       dragMode: root.dragState.dragMode
       height: root.midiEditor.keyHeight
+      isLoopResize: root.dragState.isLoopResize
       model: midiNotesRepeater.model
       pxPerTick: root.ruler.pxPerTick
       scrollViewWidth: root.scrollViewWidth

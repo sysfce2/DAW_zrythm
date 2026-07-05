@@ -443,11 +443,12 @@ Arranger {
               id: scaleLoader
 
               arrangerSelectionModel: root.arrangerSelectionModel
-              model: scalesRepeater.model
-              pxPerTick: root.ruler.pxPerTick
-              dragMode: root.dragState.dragMode
               dragDeltaPx: root.dragState.dragDeltaPx
               dragDeltaY: root.dragState.dragDeltaY
+              dragMode: root.dragState.dragMode
+              isLoopResize: root.dragState.isLoopResize
+              model: scalesRepeater.model
+              pxPerTick: root.ruler.pxPerTick
               scrollViewWidth: root.scrollViewWidth
               scrollX: root.scrollX
               unifiedObjectsModel: root.unifiedObjectsModel
@@ -493,11 +494,12 @@ Arranger {
               id: markerLoader
 
               arrangerSelectionModel: root.arrangerSelectionModel
-              model: markersRepeater.model
-              pxPerTick: root.ruler.pxPerTick
-              dragMode: root.dragState.dragMode
               dragDeltaPx: root.dragState.dragDeltaPx
               dragDeltaY: root.dragState.dragDeltaY
+              dragMode: root.dragState.dragMode
+              isLoopResize: root.dragState.isLoopResize
+              model: markersRepeater.model
+              pxPerTick: root.ruler.pxPerTick
               scrollViewWidth: root.scrollViewWidth
               scrollX: root.scrollX
               unifiedObjectsModel: root.unifiedObjectsModel
@@ -543,11 +545,12 @@ Arranger {
               id: chordClipLoader
 
               arrangerSelectionModel: root.arrangerSelectionModel
-              model: chordClipsRepeater.model
-              pxPerTick: root.ruler.pxPerTick
-              dragMode: root.dragState.dragMode
               dragDeltaPx: root.dragState.dragDeltaPx
               dragDeltaY: root.dragState.dragDeltaY
+              dragMode: root.dragState.dragMode
+              isLoopResize: root.dragState.isLoopResize
+              model: chordClipsRepeater.model
+              pxPerTick: root.ruler.pxPerTick
               scrollViewWidth: root.scrollViewWidth
               scrollX: root.scrollX
               unifiedObjectsModel: root.unifiedObjectsModel
@@ -560,6 +563,9 @@ Arranger {
                   clipEditor: root.clipEditor
                   height: chordClipsRepeater.height
                   isSelected: chordClipLoader.selectionTracker.isSelected
+                  loopPreview: chordClipLoader.selectionTracker.isSelected && chordClipLoader.isLoopResize
+                  referenceWidth: chordClipLoader.undraggedWidth
+                  referenceX: chordClipLoader.resizeContentOffset
                   track: trackDelegate.track
                   undoStack: root.undoStack
 
@@ -598,12 +604,13 @@ Arranger {
                 id: mainTrackClipLoader
 
                 arrangerSelectionModel: root.arrangerSelectionModel
-                height: mainTrackLanedClipsLoader.height
-                model: mainTrackLaneClipsRepeater.model
-                pxPerTick: root.ruler.pxPerTick
-                dragMode: root.dragState.dragMode
                 dragDeltaPx: root.dragState.dragDeltaPx
                 dragDeltaY: root.dragState.dragDeltaY
+                dragMode: root.dragState.dragMode
+                height: mainTrackLanedClipsLoader.height
+                isLoopResize: root.dragState.isLoopResize
+                model: mainTrackLaneClipsRepeater.model
+                pxPerTick: root.ruler.pxPerTick
                 scrollViewWidth: root.scrollViewWidth
                 scrollX: root.scrollX
                 sourceComponent: mainTrackClipLoader.arrangerObject.type === ArrangerObject.MidiClip ? midiClipComponent : audioClipComponent
@@ -619,6 +626,9 @@ Arranger {
                     clipEditor: root.clipEditor
                     isSelected: mainTrackClipLoader.selectionTracker.isSelected
                     lane: mainTrackLaneClipsRepeater.trackLane
+                    loopPreview: mainTrackClipLoader.selectionTracker.isSelected && mainTrackClipLoader.isLoopResize
+                    referenceWidth: mainTrackClipLoader.undraggedWidth
+                    referenceX: mainTrackClipLoader.resizeContentOffset
                     track: trackDelegate.track
                     undoStack: root.undoStack
 
@@ -642,6 +652,9 @@ Arranger {
                     height: mainTrackClipLoader.height
                     isSelected: mainTrackClipLoader.selectionTracker.isSelected
                     lane: mainTrackLaneClipsRepeater.trackLane
+                    loopPreview: mainTrackClipLoader.selectionTracker.isSelected && mainTrackClipLoader.isLoopResize
+                    referenceWidth: mainTrackClipLoader.undraggedWidth
+                    referenceX: mainTrackClipLoader.resizeContentOffset
                     tempoMap: root.tempoMap
                     track: trackDelegate.track
                     undoStack: root.undoStack
@@ -742,12 +755,13 @@ Arranger {
                 id: automationClipLoader
 
                 arrangerSelectionModel: root.arrangerSelectionModel
-                height: automationTrackItem.height
-                model: automationClipsRepeater.model
-                pxPerTick: root.ruler.pxPerTick
-                dragMode: root.dragState.dragMode
                 dragDeltaPx: root.dragState.dragDeltaPx
                 dragDeltaY: root.dragState.dragDeltaY
+                dragMode: root.dragState.dragMode
+                height: automationTrackItem.height
+                isLoopResize: root.dragState.isLoopResize
+                model: automationClipsRepeater.model
+                pxPerTick: root.ruler.pxPerTick
                 scrollViewWidth: root.scrollViewWidth
                 scrollX: root.scrollX
                 unifiedObjectsModel: root.unifiedObjectsModel
@@ -760,6 +774,9 @@ Arranger {
                     automationTrack: automationTrackItem.automationTrack
                     clipEditor: root.clipEditor
                     isSelected: automationClipLoader.selectionTracker.isSelected
+                    loopPreview: automationClipLoader.selectionTracker.isSelected && automationClipLoader.isLoopResize
+                    referenceWidth: automationClipLoader.undraggedWidth
+                    referenceX: automationClipLoader.resizeContentOffset
                     track: trackDelegate.track
                     undoStack: root.undoStack
 
@@ -821,12 +838,13 @@ Arranger {
         id: laneClipLoader
 
         arrangerSelectionModel: root.arrangerSelectionModel
-        height: laneItem.trackLane.height
-        model: arrangerObject.type === ArrangerObject.MidiClip ? laneItem.trackLane.midiClips : laneItem.trackLane.audioClips
-        pxPerTick: root.ruler.pxPerTick
-        dragMode: root.dragState.dragMode
         dragDeltaPx: root.dragState.dragDeltaPx
         dragDeltaY: root.dragState.dragDeltaY
+        dragMode: root.dragState.dragMode
+        height: laneItem.trackLane.height
+        isLoopResize: root.dragState.isLoopResize
+        model: arrangerObject.type === ArrangerObject.MidiClip ? laneItem.trackLane.midiClips : laneItem.trackLane.audioClips
+        pxPerTick: root.ruler.pxPerTick
         scrollViewWidth: root.scrollViewWidth
         scrollX: root.scrollX
         sourceComponent: laneClipLoader.arrangerObject.type === ArrangerObject.MidiClip ? laneMidiClipComponent : laneAudioClipComponent
@@ -842,6 +860,9 @@ Arranger {
             clipEditor: root.clipEditor
             isSelected: laneClipLoader.selectionTracker.isSelected
             lane: laneItem.trackLane
+            loopPreview: laneClipLoader.selectionTracker.isSelected && laneClipLoader.isLoopResize
+            referenceWidth: laneClipLoader.undraggedWidth
+            referenceX: laneClipLoader.resizeContentOffset
             track: laneItem.track
             undoStack: root.undoStack
 
@@ -864,6 +885,9 @@ Arranger {
             clipEditor: root.clipEditor
             isSelected: laneClipLoader.selectionTracker.isSelected
             lane: laneItem.trackLane
+            loopPreview: laneClipLoader.selectionTracker.isSelected && laneClipLoader.isLoopResize
+            referenceWidth: laneClipLoader.undraggedWidth
+            referenceX: laneClipLoader.resizeContentOffset
             tempoMap: root.tempoMap
             track: laneItem.track
             undoStack: root.undoStack

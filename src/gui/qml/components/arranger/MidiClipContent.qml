@@ -12,12 +12,18 @@ Item {
 
   required property int contentHeight
   required property int contentWidth
+  property bool loopPreview: false
   required property MidiClip midiClip
+  property real referenceWidth: 0
+  property real referenceX: 0
 
   MidiClipCanvas {
     height: root.contentHeight
-    noteColor: ZrythmTheme.clipContentColor
+    loopPreview: root.loopPreview
     midiClip: root.midiClip
+    noteColor: ZrythmTheme.clipContentColor
+    referenceWidth: root.referenceWidth
+    referenceX: root.referenceX
     width: root.contentWidth
   }
 }

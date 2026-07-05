@@ -19,10 +19,16 @@ QtObject {
   property real dragDeltaY: 0
   property int dragMode: ArrangerDragState.DragMode.None
 
+  // True when the current resize is a loop-point resize (Ctrl+drag on the
+  // edge handles). When true, content stays in place and loop repetitions
+  // fill the extended area, instead of clipping/shifting the content.
+  property bool isLoopResize: false
+
   // Clear drag mode and accumulated deltas (e.g. on drag release).
   function reset() {
     dragMode = ArrangerDragState.DragMode.None;
     dragDeltaPx = 0;
     dragDeltaY = 0;
+    isLoopResize = false;
   }
 }

@@ -10,15 +10,21 @@ import ZrythmGui
 Item {
   id: root
 
+  required property AudioClip audioClip
   required property int contentHeight
   required property int contentWidth
-  required property AudioClip audioClip
+  property bool loopPreview: false
+  property real referenceWidth: 0
+  property real referenceX: 0
   required property TempoMap tempoMap
 
   AudioClipWaveformCanvas {
-    height: root.contentHeight
-    outlineColor: Qt.lighter(ZrythmTheme.clipContentColor, 1.4)
     audioClip: root.audioClip
+    height: root.contentHeight
+    loopPreview: root.loopPreview
+    outlineColor: Qt.lighter(ZrythmTheme.clipContentColor, 1.4)
+    referenceWidth: root.referenceWidth
+    referenceX: root.referenceX
     tempoMap: root.tempoMap
     waveformColor: ZrythmTheme.clipContentColor
     width: root.contentWidth

@@ -60,6 +60,7 @@ Arranger {
         const lighter = Qt.lighter(root.track.color, 1.4);
         return Qt.rgba(lighter.r, lighter.g, lighter.b, 200 / 255);
       }
+      tempoMap: root.tempoMap
       waveformColor: Qt.rgba(root.track.color.r, root.track.color.g, root.track.color.b, 80 / 255)
       width: root.clipWidth
       x: root.clipX

@@ -8,14 +8,20 @@ import ZrythmGui
 Item {
   id: root
 
+  required property AutomationClip automationClip
   required property int contentHeight
   required property int contentWidth
-  required property AutomationClip automationClip
+  property bool loopPreview: false
+  property real referenceWidth: 0
+  property real referenceX: 0
 
   AutomationClipCanvas {
-    height: root.contentHeight
-    width: root.contentWidth
     automationClip: root.automationClip
     curveColor: ZrythmTheme.clipContentColor
+    height: root.contentHeight
+    loopPreview: root.loopPreview
+    referenceWidth: root.referenceWidth
+    referenceX: root.referenceX
+    width: root.contentWidth
   }
 }

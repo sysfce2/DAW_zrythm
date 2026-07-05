@@ -16,6 +16,9 @@ ClipBaseView {
   clipContent: MidiClipContent {
     contentHeight: root.contentHeight
     contentWidth: root.contentWidth
+    loopPreview: root.loopPreview
     midiClip: root.midiClip
+    referenceWidth: root.referenceWidth
+    referenceX: root.referenceX
   }
 }

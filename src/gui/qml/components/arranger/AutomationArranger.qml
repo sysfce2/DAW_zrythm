@@ -82,17 +82,19 @@ Arranger {
       readonly property AutomationPoint automationPoint: arrangerObject as AutomationPoint
 
       arrangerSelectionModel: root.arrangerSelectionModel
+      centeredOnPosition: true
       dragDeltaPx: root.dragState.dragDeltaPx
       dragDeltaY: root.dragState.dragDeltaY
       dragMode: root.dragState.dragMode
       height: 2 * ZrythmTheme.buttonPadding
+      isLoopResize: root.dragState.isLoopResize
       model: automationPointsRepeater.model
       pxPerTick: root.ruler.pxPerTick
       scrollViewWidth: root.scrollViewWidth
       scrollX: root.scrollX
       unifiedObjectsModel: root.unifiedObjectsModel
       width: height
-      y: (1.0 - automationPoint.value) * parent.height
+      y: (1.0 - automationPoint.value) * parent.height - height / 2
 
       sourceComponent: Component {
         AutomationPointView {

@@ -19,10 +19,13 @@ ArrangerObjectBaseView {
       w += headerExtraContainer.childrenRect.width + 4;
     return w;
   }
+  readonly property alias clipContent: clipContent.data
+  readonly property alias clipContentContainer: clipContent
   required property ClipEditor clipEditor   // FIXME: is this needed?
   readonly property Clip clipObject: arrangerObject as Clip
   readonly property real contentHeight: clipContentContainer.height
   readonly property real contentWidth: clipContentContainer.width
+  readonly property real effectiveReferenceWidth: referenceWidth > 0 ? referenceWidth : contentWidth
 
   // Progressive header disclosure: 0=full badge+loop, 1=symbol badge+loop,
   // 2=loop only, 3=name only. Priority: name > loop > badge.
@@ -43,8 +46,14 @@ ArrangerObjectBaseView {
     return 3;
   }
   readonly property alias headerExtra: headerExtraContainer.data
-  readonly property alias clipContent: clipContent.data
-  readonly property alias clipContentContainer: clipContent
+  // When true, renderers extend loop content even if the clip isn't looped
+  // (used during loop-resize of a non-looped clip).
+  property bool loopPreview: false
+
+  // Content density reference (constant during drag). 0 = use display width.
+  property real referenceWidth: 0
+  // Pixel offset for ResizeFromStart drag.
+  property real referenceX: 0
   readonly property string regionName: arrangerObject.name.name
   readonly property real regionTicks: clipObject.timelineLengthTicks
 
@@ -117,59 +126,64 @@ ArrangerObjectBaseView {
     Loader {
       id: loopPointsLoader
 
-      active: root.clipObject.looped
+      active: root.clipObject.looped || root.loopPreview
       anchors.fill: parent
       visible: active
       z: 100
 
-      sourceComponent: Repeater {
-        id: loopPoints
+      sourceComponent: Item {
+        id: loopPointsContainer
 
-        model: {
-          if (!root.clipObject.looped) {
-            return [];
+        property var loopPoints: []
+
+        function updateLoopPoints() {
+          if (!root.clipObject.looped && !root.loopPreview) {
+            loopPoints = [];
+            return;
           }
-
-          const warp = root.arrangerObject.contentWarp;
-
-          function toTimelineTicksRelative(ticks: real): real {
-            return warp ? warp.contentToTimelineTicksRelative(ticks) : ticks;
-          }
-
-          const loopPoints = [];
-
-          const loopStartTicks = toTimelineTicksRelative(root.clipObject.loopStartPosition.ticks);
-          const loopEndTicks = toTimelineTicksRelative(root.clipObject.loopEndPosition.ticks);
-          const loopLengthTicks = Math.max(0.0, loopEndTicks - loopStartTicks);
-
-          // If loop length is 0, no loop points
-          if (loopLengthTicks <= 0) {
-            return [];
-          }
-
-          const clipStartTicks = toTimelineTicksRelative(root.clipObject.clipStartPosition.ticks);
           const regionLengthTicks = root.regionTicks;
-
-          // Calculate the first loop point (relative to clip start)
-          const firstLoopPoint = loopEndTicks - clipStartTicks;
-
-          // Add loop points until we reach the end of the clip
-          let currentPoint = firstLoopPoint;
-          while (currentPoint < regionLengthTicks) {
-            loopPoints.push(currentPoint);
-            currentPoint += loopLengthTicks;
-          }
-
-          return loopPoints;
+          const displayEndTicks = root.effectiveReferenceWidth > 0 ? regionLengthTicks * (root.width / root.effectiveReferenceWidth) : regionLengthTicks;
+          loopPoints = root.clipObject.loopPointTimelineTicks(displayEndTicks);
         }
 
-        delegate: LoopLine {
-          id: loopLine
+        Component.onCompleted: updateLoopPoints()
 
-          readonly property real loopPointTicks: modelData
-          required property real modelData
+        Connections {
+          function onLoopablePropertiesChanged() {
+            loopPointsContainer.updateLoopPoints();
+          }
 
-          x: (loopPointTicks / root.regionTicks) * root.width
+          function onTimelineLengthTicksChanged() {
+            loopPointsContainer.updateLoopPoints();
+          }
+
+          target: root.clipObject
+        }
+
+        Connections {
+          function onEffectiveReferenceWidthChanged() {
+            loopPointsContainer.updateLoopPoints();
+          }
+
+          function onLoopPreviewChanged() {
+            loopPointsContainer.updateLoopPoints();
+          }
+
+          function onWidthChanged() {
+            loopPointsContainer.updateLoopPoints();
+          }
+
+          target: root
+        }
+
+        Repeater {
+          model: loopPointsContainer.loopPoints
+
+          delegate: LoopLine {
+            required property real modelData
+
+            x: (modelData / root.regionTicks) * root.effectiveReferenceWidth - root.referenceX
+          }
         }
       }
     }

@@ -91,6 +91,7 @@ Arranger {
         dragDeltaY: root.dragState.dragDeltaY
         dragMode: root.dragState.dragMode
         height: root.laneHeight
+        isLoopResize: root.dragState.isLoopResize
         model: tempoObjectsRepeater.model
         pxPerTick: root.ruler.pxPerTick
         scrollViewWidth: root.scrollViewWidth
@@ -133,6 +134,7 @@ Arranger {
         dragDeltaY: root.dragState.dragDeltaY
         dragMode: root.dragState.dragMode
         height: root.laneHeight
+        isLoopResize: root.dragState.isLoopResize
         model: timeSignatureObjectsRepeater.model
         pxPerTick: root.ruler.pxPerTick
         scrollViewWidth: root.scrollViewWidth
