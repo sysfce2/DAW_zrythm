@@ -103,8 +103,9 @@ namespace
 QColor
 rootNoteToColor (int rootNote)
 {
-  QColor c = QColor::fromHslF (std::clamp (rootNote, 0, 11) / 12.0, 0.7, 0.5);
-  c.setAlphaF (0.6);
+  QColor c = QColor::fromHslF (
+    static_cast<float> (std::clamp (rootNote, 0, 11) / 12.0), 0.7f, 0.5f);
+  c.setAlphaF (0.6f);
   return c;
 }
 
@@ -200,7 +201,7 @@ ChordClipCanvasRenderer::paint (QCanvasPainter * painter)
   painter->setRenderHint (QCanvasPainter::RenderHint::Antialiasing, false);
 
   QColor separator_color = text_color_;
-  separator_color.setAlphaF (separator_color.alphaF () * 0.4);
+  separator_color.setAlphaF (separator_color.alphaF () * 0.4f);
 
   for (const auto &cell : cells_)
     {
@@ -219,7 +220,7 @@ ChordClipCanvasRenderer::paint (QCanvasPainter * painter)
         {
           QColor bg = cell.bg_color;
           if (cell.muted)
-            bg.setAlphaF (bg.alphaF () * 0.3);
+            bg.setAlphaF (bg.alphaF () * 0.3f);
           painter->setFillStyle (bg);
           painter->fillRect (cell.x, 0.0f, cell.width, canvas_height_);
         }

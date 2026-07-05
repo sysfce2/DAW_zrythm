@@ -18,7 +18,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <kiss_fft.h>
 
-namespace
+namespace zrythm::gui::qquick
 {
 
 class KissFftConfig
@@ -38,11 +38,6 @@ public:
 private:
   kiss_fft_cfg cfg_{};
 };
-
-}
-
-namespace zrythm::gui::qquick
-{
 
 struct SpectrumAnalyzerCanvasItem::Impl
 {
