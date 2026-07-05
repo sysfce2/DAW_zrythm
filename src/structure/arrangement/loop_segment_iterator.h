@@ -85,7 +85,7 @@ for_each_loop_segment (
       callback (LoopSegment{ virt_start, virt_end, abs_start, abs_end });
 
       const auto current_len = abs_end - abs_start;
-      if (current_len.asDouble () <= 0.0)
+      if (current_len <= dsp::ContentTick{})
         break;
 
       // Subsequent legs use the loop region.
@@ -133,7 +133,7 @@ compute_loop_boundary_deltas (
 
   const auto loop_length =
     max (dsp::ContentTick{ units::ticks (0.0) }, loop_end_ct - loop_start_ct);
-  if (loop_length.asDouble () <= 0.0)
+  if (loop_length <= dsp::ContentTick{})
     return result;
 
   auto cumulative = loop_end_ct - clip_start_ct;
