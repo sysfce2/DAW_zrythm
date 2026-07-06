@@ -208,31 +208,13 @@ Project::Project (
         }
     });
 
-  // Sync changes from tempo-related arranger objects to tempo map
+  // Sync changes from tempo-related arranger objects to the tempo map. The
+  // sync logic lives on TempoObjectManager (the tempo authority); Project only
+  // wires the signal and asserts the engine is stopped.
   const auto rebuild_tempo_map = [this] () {
     // This must never be called while the engine is running
     assert (!audio_engine_->running ());
-
-    tempo_map_wrapper_->clearTimeSignatureEvents ();
-    tempo_map_wrapper_->clearTempoEvents ();
-    for (
-      const auto * tempo_obj :
-      tempo_object_manager_->structure::arrangement::ArrangerObjectOwner<
-        structure::arrangement::TimeSignatureObject>::get_sorted_children_view ())
-      {
-        tempo_map_wrapper_->addTimeSignatureEvent (
-          static_cast<int64_t> (std::round (tempo_obj->position ()->ticks ())),
-          tempo_obj->numerator (), tempo_obj->denominator ());
-      }
-    for (
-      const auto * tempo_obj :
-      tempo_object_manager_->structure::arrangement::ArrangerObjectOwner<
-        structure::arrangement::TempoObject>::get_sorted_children_view ())
-      {
-        tempo_map_wrapper_->addTempoEvent (
-          static_cast<int64_t> (std::round (tempo_obj->position ()->ticks ())),
-          tempo_obj->tempo (), tempo_obj->curve ());
-      }
+    tempo_object_manager_->sync_to_tempo_map (*tempo_map_wrapper_);
   };
   QObject::connect (
     tempo_object_manager_->tempoObjects (),

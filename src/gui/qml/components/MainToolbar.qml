@@ -25,6 +25,7 @@ ZrythmToolBar {
       tempoMap: root.project.tempoMap
       transport: root.project.transport
       transportController: root.session.transportController
+      undoStack: root.session.undoStack
     }
   ]
   leftItems: [

@@ -60,6 +60,38 @@ TempoCurveCanvasItem::setTempoObjectManager (
 }
 
 void
+TempoCurveCanvasItem::setTempoMap (dsp::TempoMapWrapper * wrapper)
+{
+  if (tempo_map_ == wrapper)
+    return;
+
+  if (tempo_map_ != nullptr)
+    QObject::disconnect (tempo_map_, nullptr, this, nullptr);
+
+  tempo_map_ = wrapper;
+
+  if (tempo_map_ != nullptr)
+    {
+      // Re-render when the base tempo or any inserted event changes.
+      QObject::connect (
+        tempo_map_, &dsp::TempoMapWrapper::baseBpmChanged, this,
+        &TempoCurveCanvasItem::update, Qt::UniqueConnection);
+      QObject::connect (
+        tempo_map_, &dsp::TempoMapWrapper::tempoEventsChanged, this,
+        &TempoCurveCanvasItem::update, Qt::UniqueConnection);
+    }
+
+  Q_EMIT tempoMapChanged ();
+  update ();
+}
+
+double
+TempoCurveCanvasItem::baseBpm () const
+{
+  return tempo_map_ != nullptr ? tempo_map_->baseBpm () : 120.0;
+}
+
+void
 TempoCurveCanvasItem::setPxPerTick (qreal px)
 {
   if (qFuzzyCompare (px_per_tick_, px))

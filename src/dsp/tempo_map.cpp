@@ -9,6 +9,7 @@
 #include <stdexcept>
 
 #include "dsp/tempo_map.h"
+#include "utils/logger.h"
 #include "utils/serialization.h"
 
 #include <au/math.hh>
@@ -21,16 +22,16 @@ void
 to_json (nlohmann::json &j, const FixedPpqTempoMap<units::PPQ>::TempoEvent &e)
 {
   j = nlohmann::json{
-    { "tick",  e.tick  },
-    { "bpm",   e.bpm   },
-    { "curve", e.curve }
+    { "tickPosition", e.tick  },
+    { "bpm",          e.bpm   },
+    { "curve",        e.curve }
   };
 }
 
 void
 from_json (const nlohmann::json &j, FixedPpqTempoMap<units::PPQ>::TempoEvent &e)
 {
-  j.at ("tick").get_to (e.tick);
+  j.at ("tickPosition").get_to (e.tick);
   j.at ("bpm").get_to (e.bpm);
   j.at ("curve").get_to (e.curve);
 }
@@ -41,9 +42,9 @@ to_json (
   const FixedPpqTempoMap<units::PPQ>::TimeSignatureEvent &e)
 {
   j = nlohmann::json{
-    { "tick",        e.tick        },
-    { "numerator",   e.numerator   },
-    { "denominator", e.denominator }
+    { "tickPosition", e.tick        },
+    { "numerator",    e.numerator   },
+    { "denominator",  e.denominator }
   };
 }
 
@@ -52,7 +53,7 @@ from_json (
   const nlohmann::json                             &j,
   FixedPpqTempoMap<units::PPQ>::TimeSignatureEvent &e)
 {
-  j.at ("tick").get_to (e.tick);
+  j.at ("tickPosition").get_to (e.tick);
   j.at ("numerator").get_to (e.numerator);
   j.at ("denominator").get_to (e.denominator);
 }
@@ -60,6 +61,11 @@ from_json (
 void
 to_json (nlohmann::json &j, const FixedPpqTempoMap<units::PPQ> &tempo_map)
 {
+  j[tempo_map.kBaseBpmKey] = tempo_map.base_bpm_;
+  j[tempo_map.kBaseTimeSignatureKey] = {
+    { "numerator",   tempo_map.base_time_sig_.numerator   },
+    { "denominator", tempo_map.base_time_sig_.denominator },
+  };
   j[tempo_map.kTimeSignaturesKey] = tempo_map.time_sig_events_;
   j[tempo_map.kTempoChangesKey] = tempo_map.events_;
 }
@@ -67,8 +73,26 @@ to_json (nlohmann::json &j, const FixedPpqTempoMap<units::PPQ> &tempo_map)
 void
 from_json (const nlohmann::json &j, FixedPpqTempoMap<units::PPQ> &tempo_map)
 {
+  if (j.contains (tempo_map.kBaseBpmKey))
+    j.at (tempo_map.kBaseBpmKey).get_to (tempo_map.base_bpm_);
+  if (j.contains (tempo_map.kBaseTimeSignatureKey))
+    {
+      const auto &bts = j.at (tempo_map.kBaseTimeSignatureKey);
+      if (bts.contains ("numerator"))
+        bts.at ("numerator").get_to (tempo_map.base_time_sig_.numerator);
+      else
+        z_warning (
+          "Missing 'numerator' in serialized baseTimeSignature; keeping default");
+      if (bts.contains ("denominator"))
+        bts.at ("denominator").get_to (tempo_map.base_time_sig_.denominator);
+      else
+        z_warning (
+          "Missing 'denominator' in serialized baseTimeSignature; keeping default");
+    }
+
   j.at (tempo_map.kTimeSignaturesKey).get_to (tempo_map.time_sig_events_);
   j.at (tempo_map.kTempoChangesKey).get_to (tempo_map.events_);
+  tempo_map.rebuild_time_signature_cache ();
   tempo_map.rebuild_cumulative_times ();
 }
 
@@ -81,12 +105,6 @@ FixedPpqTempoMap<
     throw std::invalid_argument ("BPM must be positive");
   if (tick < units::ticks (0))
     throw std::invalid_argument ("Tick must be non-negative");
-
-  // Automatically add a default tempo event at tick 0
-  if (events_.empty () && tick != units::ticks (0))
-    {
-      events_.push_back (default_tempo_);
-    }
 
   // Find and remove existing event at same tick
   auto it = std::ranges::find (events_, tick, [] (const TempoEvent &e) {
@@ -126,17 +144,10 @@ FixedPpqTempoMap<PPQ>::
 {
   if (tick < units::ticks (0))
     throw std::invalid_argument ("Tick must be non-negative");
-  if (numerator <= 0 || denominator <= 0)
-    throw std::invalid_argument ("Invalid time signature");
+  throw_if_invalid_time_signature (numerator, denominator);
   if (!events_.empty ())
     throw std::logic_error (
       "Time signature events must be added before tempo events");
-
-  // Automatically add a default time signature event at tick 0
-  if (time_sig_events_.empty () && tick != units::ticks (0))
-    {
-      time_sig_events_.push_back (default_time_sig_);
-    }
 
   // Remove existing event at same tick
   auto it = std::ranges::find (
@@ -148,6 +159,7 @@ FixedPpqTempoMap<PPQ>::
 
   time_sig_events_.push_back ({ tick, numerator, denominator });
   std::ranges::sort (time_sig_events_, {}, &TimeSignatureEvent::tick);
+  rebuild_time_signature_cache ();
 }
 
 template <units::tick_t::NTTP PPQ>
@@ -163,6 +175,7 @@ FixedPpqTempoMap<PPQ>::remove_time_signature_event (units::tick_t tick)
   if (it != time_sig_events_.end ())
     {
       time_sig_events_.erase (it);
+      rebuild_time_signature_cache ();
     }
 }
 
@@ -172,30 +185,34 @@ FixedPpqTempoMap<PPQ>::tick_to_seconds (TimelineTick tick) const
   -> units::precise_second_t
 {
   const auto tick_q = tick.asQuantity ();
-  const auto &[events, cumulative_seconds] = get_events_or_default ();
+
+  // No inserted events: base tempo (constant) over the whole timeline.
+  if (events_.empty ())
+    return tick_q / base_bpm_;
 
   // Find the last event <= target tick
-  auto it = std::ranges::upper_bound (events, tick_q, {}, &TempoEvent::tick);
+  auto it = std::ranges::upper_bound (events_, tick_q, {}, &TempoEvent::tick);
 
-  if (it == events.begin ())
+  if (it == events_.begin ())
     {
-      return units::seconds (0.0);
+      // Before the first inserted event: base tempo (constant) from tick 0.
+      return tick_q / base_bpm_;
     }
 
-  size_t              index = std::distance (events.begin (), it) - 1;
-  const auto         &startEvent = events[index];
+  size_t              index = std::distance (events_.begin (), it) - 1;
+  const auto         &startEvent = events_[index];
   const units::tick_t segmentStart = startEvent.tick;
   const auto          ticksFromStart =
     tick_q - static_cast<units::precise_tick_t> (segmentStart);
-  const auto baseSeconds = cumulative_seconds[index];
+  const auto baseSeconds = cumulative_seconds_[index];
 
   // Last event segment
-  if (index == events.size () - 1)
+  if (index == events_.size () - 1)
     {
       return baseSeconds + ticksFromStart / startEvent.bpm;
     }
 
-  const auto         &endEvent = events[index + 1];
+  const auto         &endEvent = events_[index + 1];
   const units::tick_t segmentTicks = endEvent.tick - segmentStart;
   const auto dSegmentTicks = static_cast<units::precise_tick_t> (segmentTicks);
 
@@ -233,27 +250,33 @@ FixedPpqTempoMap<PPQ>::seconds_to_tick (units::precise_second_t seconds) const
     if (seconds <= units::seconds (0.0))
       return units::ticks (0.0);
 
-    const auto &[events, cumulative_seconds] = get_events_or_default ();
+    // No inserted events: base tempo (constant) over the whole timeline.
+    if (events_.empty ())
+      return seconds * base_bpm_;
+
+    // Lead base segment: before the first inserted event's cumulative time.
+    if (seconds < cumulative_seconds_[0])
+      return seconds * base_bpm_;
 
     // Find the segment containing the time
-    auto         it = std::ranges::upper_bound (cumulative_seconds, seconds);
+    auto         it = std::ranges::upper_bound (cumulative_seconds_, seconds);
     const size_t index =
-      (it == cumulative_seconds.begin ())
+      (it == cumulative_seconds_.begin ())
         ? 0
-        : std::distance (cumulative_seconds.begin (), it) - 1;
+        : std::distance (cumulative_seconds_.begin (), it) - 1;
 
-    const auto        baseSeconds = cumulative_seconds[index];
+    const auto        baseSeconds = cumulative_seconds_[index];
     const auto        timeInSegment = seconds - baseSeconds;
-    const TempoEvent &startEvent = events[index];
+    const TempoEvent &startEvent = events_[index];
 
     // Last segment
-    if (index == events.size () - 1)
+    if (index == events_.size () - 1)
       {
         return static_cast<units::precise_tick_t> (startEvent.tick)
                + timeInSegment * startEvent.bpm;
       }
 
-    const TempoEvent   &endEvent = events[index + 1];
+    const TempoEvent   &endEvent = events_[index + 1];
     const units::tick_t segmentTicks = endEvent.tick - startEvent.tick;
     const auto dSegmentTicks = static_cast<units::precise_tick_t> (segmentTicks);
 
@@ -296,15 +319,15 @@ FixedPpqTempoMap<PPQ>::time_signature_at_tick (units::tick_t tick) const
   -> TimeSignatureEvent
 {
   if (time_sig_events_.empty ())
-    return default_time_sig_;
+    return base_time_sig_;
 
   // Find the last time signature change <= tick
   auto it = std::ranges::upper_bound (
     time_sig_events_, tick, {}, &TimeSignatureEvent::tick);
   if (it == time_sig_events_.begin ())
     {
-      // No event before tick - return default
-      return default_time_sig_;
+      // Before the first inserted event: base time signature.
+      return base_time_sig_;
     }
   --it;
 
@@ -316,14 +339,14 @@ auto
 FixedPpqTempoMap<PPQ>::tempo_at_tick (units::tick_t tick) const -> units::bpm_t
 {
   if (events_.empty ())
-    return default_tempo_.bpm;
+    return base_bpm_;
 
   // Find the last tempo change <= tick
   auto it = std::ranges::upper_bound (events_, tick, {}, &TempoEvent::tick);
   if (it == events_.begin ())
     {
-      // No event before tick - return default
-      return default_tempo_.bpm;
+      // Before the first inserted event: base tempo.
+      return base_bpm_;
     }
   --it;
 
@@ -351,10 +374,7 @@ auto
 FixedPpqTempoMap<PPQ>::tick_to_musical_position (units::tick_t tick) const
   -> MusicalPosition
 {
-  const auto &time_sig_events = get_time_signature_events_or_default ();
-
-  if (time_sig_events.empty ())
-    return { 1, 1, 1, 0 };
+  const auto time_sig_events = effective_time_signature_events ();
 
   // Find the last time signature change <= tick
   auto it = std::ranges::upper_bound (
@@ -454,7 +474,7 @@ template <units::tick_t::NTTP PPQ>
 TimelineTickI
 FixedPpqTempoMap<PPQ>::musical_position_to_tick (const MusicalPosition &pos) const
 {
-  const auto &time_sig_events = get_time_signature_events_or_default ();
+  const auto time_sig_events = effective_time_signature_events ();
 
   // Validate position
   if (pos.bar < 1 || pos.beat < 1 || pos.sixteenth < 1 || pos.tick < 0)
@@ -525,7 +545,15 @@ FixedPpqTempoMap<PPQ>::rebuild_cumulative_times ()
   std::ranges::sort (events_, {}, &TempoEvent::tick);
 
   cumulative_seconds_.resize (events_.size ());
-  cumulative_seconds_[0] = units::seconds (0.0);
+
+  // Lead segment: constant base tempo from tick 0 to the first inserted event.
+  // Only applies when the first event is not at tick 0 (otherwise that event
+  // governs from tick 0 and there is no lead segment).
+  if (events_[0].tick > units::ticks (0))
+    cumulative_seconds_[0] =
+      static_cast<units::precise_tick_t> (events_[0].tick) / base_bpm_;
+  else
+    cumulative_seconds_[0] = units::seconds (0.0);
 
   // Compute cumulative time at each event point
   for (size_t i = 0; i < events_.size () - 1; ++i)
@@ -535,6 +563,35 @@ FixedPpqTempoMap<PPQ>::rebuild_cumulative_times ()
         cumulative_seconds_[i]
         + compute_segment_time (events_[i], events_[i + 1], segmentTicks);
     }
+}
+
+template <units::tick_t::NTTP PPQ>
+void
+FixedPpqTempoMap<PPQ>::throw_if_invalid_time_signature (
+  int numerator,
+  int denominator)
+{
+  if (numerator < 1)
+    throw std::invalid_argument ("Time signature numerator must be >= 1");
+  // denominator must be a power of two in [1, 128].
+  if (
+    denominator < 1 || denominator > 128
+    || (denominator & (denominator - 1)) != 0)
+    throw std::invalid_argument (
+      "Time signature denominator must be a power of two in [1, 128]");
+}
+
+template <units::tick_t::NTTP PPQ>
+void
+FixedPpqTempoMap<PPQ>::rebuild_time_signature_cache ()
+{
+  effective_time_sig_events_.clear ();
+  if (
+    time_sig_events_.empty ()
+    || time_sig_events_.front ().tick > units::ticks (0))
+    effective_time_sig_events_.push_back (base_time_sig_);
+  for (const auto &e : time_sig_events_)
+    effective_time_sig_events_.push_back (e);
 }
 
 template <units::tick_t::NTTP PPQ>
@@ -562,32 +619,6 @@ FixedPpqTempoMap<PPQ>::compute_segment_time (
              * std::log (bpm1 / bpm0);
     }
   return units::seconds (0.0);
-}
-
-template <units::tick_t::NTTP PPQ>
-auto
-FixedPpqTempoMap<PPQ>::get_events_or_default () const
-{
-  if (events_.empty ())
-    {
-      return std::make_pair (
-        std::span{ &default_tempo_, 1 },
-        std::span{ &DEFAULT_CUMULATIVE_SECONDS, 1 });
-    }
-
-  return std::make_pair (std::span{ events_ }, std::span{ cumulative_seconds_ });
-}
-
-template <units::tick_t::NTTP PPQ>
-auto
-FixedPpqTempoMap<PPQ>::get_time_signature_events_or_default () const
-{
-  if (time_sig_events_.empty ())
-    {
-      return std::span{ &default_time_sig_, 1 };
-    }
-
-  return std::span{ time_sig_events_ };
 }
 
 template class FixedPpqTempoMap<units::PPQ>;

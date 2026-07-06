@@ -36,6 +36,19 @@ public:
     utils::IObjectRegistry &registry,
     QObject *               parent = nullptr);
 
+  /**
+   * @brief Rebuilds the given tempo map from this manager's objects.
+   *
+   * Clears the map's inserted time-signature and tempo events and re-adds them
+   * from the manager's sorted children (time signatures first, then tempos).
+   * The map's base tempo / base time signature are unaffected (they are
+   * intrinsic to the map and govern the region from tick 0 up to the first
+   * inserted event).
+   *
+   * Must not be called while the audio engine is running.
+   */
+  void sync_to_tempo_map (dsp::TempoMapWrapper &wrapper);
+
   friend void init_from (
     TempoObjectManager       &obj,
     const TempoObjectManager &other,

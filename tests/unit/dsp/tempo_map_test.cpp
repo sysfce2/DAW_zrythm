@@ -782,4 +782,303 @@ TEST_F (TempoMapTest, TimeSignatureEventUtilityMethodsEdgeCases)
   EXPECT_EQ (ts3_16.ticks_per_bar ().in (units::ticks), 0);
   EXPECT_EQ (ts3_16.ticks_per_beat ().in (units::ticks), 0); // 0 / 3 = 0
 }
+
+// ---------------------------------------------------------------------------
+// Base tempo / base time signature at tick 0 (intrinsic anchor).
+// ---------------------------------------------------------------------------
+
+// No inserted events: the base tempo (120 BPM) governs the whole timeline as a
+// constant, and tick<->seconds is linear with slope 1/base_bpm.
+TEST_F (TempoMapTest, BaseTempoNoEvents)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  const double  base_bpm = 120.0;
+  const double  sec_per_tick = 60.0 / (base_bpm * ppq);
+  const int64_t one_beat = ppq; // 1 quarter note = ppq ticks
+
+  EXPECT_DOUBLE_EQ (map->base_bpm ().in (units::bpm), base_bpm);
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (0)).in (units::bpm), base_bpm);
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (5000)).in (units::bpm), base_bpm);
+
+  EXPECT_DOUBLE_EQ (
+    map->tick_to_seconds (TimelineTick{ units::ticks (0) }).in (units::seconds),
+    0.0);
+  // One beat at the base tempo equals 60/base_bpm seconds.
+  EXPECT_NEAR (
+    map->tick_to_seconds (TimelineTick{ units::ticks (one_beat) })
+      .in (units::seconds),
+    one_beat * sec_per_tick, 1e-9);
+  EXPECT_NEAR (
+    map->seconds_to_tick (units::seconds (one_beat * sec_per_tick)).asDouble (),
+    one_beat, 1e-6);
+}
+
+// First inserted event past tick 0: base tempo (constant) governs [0, event),
+// the event governs from its tick onward, and the seconds curve is continuous
+// at the boundary.
+TEST_F (TempoMapTest, BaseTempoLeadSegmentBeforeFirstEvent)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  const double  base_bpm = 120.0;
+  const double  event_bpm = 140.0;
+  const double  sec_per_tick_at_base = 60.0 / (base_bpm * ppq);
+  const double  sec_per_tick_at_event = 60.0 / (event_bpm * ppq);
+  // Bar 2 in 4/4 = 4 quarters * ppq ticks.
+  const int64_t boundary = 4 * ppq;
+
+  map->add_tempo_event (
+    units::ticks (boundary), units::bpm (event_bpm),
+    TempoMap::CurveType::Constant);
+
+  // Before the event: base tempo.
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (0)).in (units::bpm), base_bpm);
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (boundary - 1)).in (units::bpm), base_bpm);
+  // At/after the event: the inserted tempo.
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (boundary)).in (units::bpm), event_bpm);
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (boundary + ppq)).in (units::bpm),
+    event_bpm);
+
+  // Lead segment [0, boundary) at the base tempo.
+  const double boundary_sec = boundary * sec_per_tick_at_base;
+  EXPECT_NEAR (
+    map->tick_to_seconds (TimelineTick{ units::ticks (boundary) })
+      .in (units::seconds),
+    boundary_sec, 1e-9);
+  // Continuity just before the boundary.
+  EXPECT_NEAR (
+    map->tick_to_seconds (TimelineTick{ units::ticks (boundary - 1) })
+      .in (units::seconds),
+    (boundary - 1) * sec_per_tick_at_base, 1e-9);
+  // One tick past the boundary at the event tempo.
+  EXPECT_NEAR (
+    map->tick_to_seconds (TimelineTick{ units::ticks (boundary + 1) })
+      .in (units::seconds),
+    boundary_sec + sec_per_tick_at_event, 1e-9);
+
+  // Inverse: the boundary time maps back to the boundary tick.
+  EXPECT_NEAR (
+    map->seconds_to_tick (units::seconds (boundary_sec)).asDouble (), boundary,
+    1e-6);
+}
+
+// Editing the base tempo rescales the lead segment.
+TEST_F (TempoMapTest, SetBaseBpmRescalesLeadSegment)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  const double  new_base = 60.0;
+  const int64_t boundary = 4 * ppq;
+  const double  sec_per_tick_at_base = 60.0 / (new_base * ppq);
+
+  map->add_tempo_event (
+    units::ticks (boundary), units::bpm (140.0), TempoMap::CurveType::Constant);
+  map->set_base_bpm (units::bpm (new_base));
+
+  EXPECT_DOUBLE_EQ (map->base_bpm ().in (units::bpm), new_base);
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (0)).in (units::bpm), new_base);
+  EXPECT_NEAR (
+    map->tick_to_seconds (TimelineTick{ units::ticks (boundary) })
+      .in (units::seconds),
+    boundary * sec_per_tick_at_base, 1e-9);
+}
+
+// An inserted event at tick 0 shadows the base tempo for the region it covers.
+TEST_F (TempoMapTest, EventAtTickZeroShadowsBase)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  map->set_base_bpm (units::bpm (100.0));
+  map->add_tempo_event (
+    units::ticks (0), units::bpm (140.0), TempoMap::CurveType::Constant);
+
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (0)).in (units::bpm), 140.0);
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (ppq)).in (units::bpm), 140.0);
+  // Base is not consulted; only one event exists.
+  EXPECT_EQ (map->tempo_events ().size (), 1u);
+}
+
+// The base time signature governs bar numbering over [0, first event).
+TEST_F (TempoMapTest, BaseTimeSignatureGovernsLeadRegion)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  // Base 3/4: denominator 4 -> beat unit is a quarter note (ppq ticks/beat);
+  // 3 beats per bar -> 3 * ppq ticks per bar.
+  constexpr int num = 3;
+  constexpr int den = 4;
+  const int64_t ticks_per_bar = (num * 4 / den) * ppq;
+
+  map->set_base_time_signature (num, den);
+
+  auto at_tick0 = map->tick_to_musical_position (units::ticks (0));
+  EXPECT_EQ (at_tick0.bar, 1);
+  EXPECT_EQ (at_tick0.beat, 1);
+
+  // One bar later -> bar 2, beat 1.
+  auto at_bar2 = map->tick_to_musical_position (units::ticks (ticks_per_bar));
+  EXPECT_EQ (at_bar2.bar, 2);
+  EXPECT_EQ (at_bar2.beat, 1);
+
+  // One beat into bar 1 -> beat 2.
+  auto at_beat2 = map->tick_to_musical_position (units::ticks (ppq));
+  EXPECT_EQ (at_beat2.bar, 1);
+  EXPECT_EQ (at_beat2.beat, 2);
+}
+
+// Base tempo and base time signature survive serialization roundtrip.
+TEST_F (TempoMapTest, BaseValuesSerialization)
+{
+  map->set_base_bpm (units::bpm (150.0));
+  map->set_base_time_signature (6, 8);
+
+  nlohmann::json j = *map;
+  TempoMap       deserialized{ SAMPLE_RATE };
+  j.get_to (deserialized);
+
+  // Scalar roundtrip.
+  EXPECT_DOUBLE_EQ (deserialized.base_bpm ().in (units::bpm), 150.0);
+  EXPECT_EQ (deserialized.base_time_signature ().numerator, 6);
+  EXPECT_EQ (deserialized.base_time_signature ().denominator, 8);
+
+  // Behavioral: base_bpm_ actually drives tempo lookup after load.
+  EXPECT_DOUBLE_EQ (
+    deserialized.tempo_at_tick (units::ticks (0)).in (units::bpm), 150.0);
+
+  // Behavioral: the rebuilt effective-time-signature cache drives bar
+  // numbering after load. 6/8 -> ticks_per_bar = (6 * 4 / 8) * ppq = 3 * ppq,
+  // so one bar later lands on bar 2, beat 1. This would catch a regression
+  // where rebuild_time_signature_cache() were removed from from_json.
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  const auto    at_bar2 =
+    deserialized.tick_to_musical_position (units::ticks (3 * ppq));
+  EXPECT_EQ (at_bar2.bar, 2);
+  EXPECT_EQ (at_bar2.beat, 1);
+}
+
+// Old project format (no baseBpm/baseTimeSignature keys) loads with default
+// base values (120 BPM, 4/4).
+TEST_F (TempoMapTest, OldFormatLoadUsesDefaultBase)
+{
+  nlohmann::json j = R"({
+    "timeSignatures": [],
+    "tempoChanges": []
+  })"_json;
+
+  TempoMap deserialized{ SAMPLE_RATE };
+  j.get_to (deserialized);
+
+  EXPECT_DOUBLE_EQ (deserialized.base_bpm ().in (units::bpm), 120.0);
+  EXPECT_EQ (deserialized.base_time_signature ().numerator, 4);
+  EXPECT_EQ (deserialized.base_time_signature ().denominator, 4);
+  EXPECT_DOUBLE_EQ (
+    deserialized.tempo_at_tick (units::ticks (0)).in (units::bpm), 120.0);
+}
+
+// An inserted time-signature event at tick 0 shadows the base signature: the
+// base must not be prepended into the effective view, and bar numbering follows
+// the inserted signature.
+TEST_F (TempoMapTest, TimeSignatureAtTickZeroShadowsBase)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  // Inserted 3/4 at tick 0 shadows the default base 4/4.
+  map->add_time_signature_event (units::ticks (0), 3, 4);
+
+  ASSERT_EQ (map->effective_time_signature_events ().size (), 1u);
+  const auto &eff0 = map->effective_time_signature_events ()[0];
+  EXPECT_EQ (eff0.tick, units::ticks (0));
+  EXPECT_EQ (eff0.numerator, 3);
+  EXPECT_EQ (eff0.denominator, 4);
+
+  // 3/4 -> ticks_per_bar = 3 * ppq, so one bar later lands on bar 2.
+  const auto at_bar2 = map->tick_to_musical_position (units::ticks (3 * ppq));
+  EXPECT_EQ (at_bar2.bar, 2);
+  EXPECT_EQ (at_bar2.beat, 1);
+}
+
+// Base and inserted time-signature events: bar numbering accumulates correctly
+// across the boundary at the inserted event.
+TEST_F (TempoMapTest, BaseAndInsertedTimeSignatureBoundary)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  // Base 4/4 (default). Insert 3/4 at 8 * ppq ticks (2 bars under base 4/4).
+  constexpr int64_t boundary_bars = 2;
+  const int64_t     boundary = boundary_bars * 4 * ppq;
+  map->add_time_signature_event (units::ticks (boundary), 3, 4);
+
+  // Strictly before the boundary: base 4/4 governs.
+  EXPECT_EQ (map->tick_to_musical_position (units::ticks (0)).bar, 1);
+  EXPECT_EQ (map->tick_to_musical_position (units::ticks (4 * ppq)).bar, 2);
+
+  // At the boundary: 2 bars elapsed under base 4/4, so inserted 3/4 begins at
+  // bar 3.
+  const auto at_boundary =
+    map->tick_to_musical_position (units::ticks (boundary));
+  EXPECT_EQ (at_boundary.bar, 3);
+  EXPECT_EQ (at_boundary.beat, 1);
+
+  // One bar past the boundary under 3/4 (3 * ppq ticks/bar) -> bar 4.
+  const auto after_boundary =
+    map->tick_to_musical_position (units::ticks (boundary + 3 * ppq));
+  EXPECT_EQ (after_boundary.bar, 4);
+  EXPECT_EQ (after_boundary.beat, 1);
+}
+
+// Forward musical_position_to_tick with a non-default base signature, verified
+// as a round-trip against tick_to_musical_position.
+TEST_F (TempoMapTest, MusicalPositionToTickForwardWithBaseSignature)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+  // Base 6/8: quarters_per_bar = 6 * (4/8) = 3 -> ticks_per_bar = 3 * ppq.
+  map->set_base_time_signature (6, 8);
+
+  const TempoMap::MusicalPosition pos{ 2, 1, 1, 0 };
+  const auto forward_tick = map->musical_position_to_tick (pos);
+  // Bar 2 starts one bar past tick 0 -> 3 * ppq ticks.
+  EXPECT_DOUBLE_EQ (forward_tick.asDouble (), 3.0 * ppq);
+
+  // Inverse round-trip back to the original musical position.
+  const auto back = map->tick_to_musical_position (units::ticks (3 * ppq));
+  EXPECT_EQ (back, pos);
+}
+
+// After removing the only inserted tempo and time-signature events, lookups
+// must fall back to the base values across the timeline.
+TEST_F (TempoMapTest, RemoveEventRestoresBaseGovernance)
+{
+  const int64_t ppq = TempoMap::get_ppq ().in (units::ticks);
+
+  map->set_base_bpm (units::bpm (100.0));
+  map->set_base_time_signature (3, 4);
+  // Time signatures must be added before tempo events.
+  map->add_time_signature_event (units::ticks (4 * ppq), 5, 8);
+  map->add_tempo_event (
+    units::ticks (4 * ppq), units::bpm (140.0), TempoMap::CurveType::Constant);
+
+  // Sanity: at the event tick the inserted values govern.
+  EXPECT_DOUBLE_EQ (
+    map->tempo_at_tick (units::ticks (4 * ppq)).in (units::bpm), 140.0);
+  EXPECT_EQ (map->time_signature_at_tick (units::ticks (4 * ppq)).numerator, 5);
+  EXPECT_EQ (
+    map->time_signature_at_tick (units::ticks (4 * ppq)).denominator, 8);
+
+  // Remove both -> base values must govern everywhere again.
+  map->remove_tempo_event (units::ticks (4 * ppq));
+  map->remove_time_signature_event (units::ticks (4 * ppq));
+
+  EXPECT_DOUBLE_EQ (map->base_bpm ().in (units::bpm), 100.0);
+  for (const int64_t t : { int64_t{ 0 }, ppq, 4 * ppq, 8 * ppq })
+    {
+      SCOPED_TRACE (t);
+      EXPECT_DOUBLE_EQ (
+        map->tempo_at_tick (units::ticks (t)).in (units::bpm), 100.0);
+      EXPECT_EQ (map->time_signature_at_tick (units::ticks (t)).numerator, 3);
+      EXPECT_EQ (map->time_signature_at_tick (units::ticks (t)).denominator, 4);
+    }
+}
 }

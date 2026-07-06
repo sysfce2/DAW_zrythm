@@ -112,6 +112,13 @@ class TempoMapWrapper : public QObject
   Q_PROPERTY (
     double sampleRate READ sampleRate WRITE setSampleRate NOTIFY
       sampleRateChanged)
+  Q_PROPERTY (double baseBpm READ baseBpm WRITE setBaseBpm NOTIFY baseBpmChanged)
+  Q_PROPERTY (
+    int baseTimeSignatureNumerator READ baseTimeSignatureNumerator WRITE
+      setBaseTimeSignatureNumerator NOTIFY baseTimeSignatureChanged)
+  Q_PROPERTY (
+    int baseTimeSignatureDenominator READ baseTimeSignatureDenominator WRITE
+      setBaseTimeSignatureDenominator NOTIFY baseTimeSignatureChanged)
   QML_NAMED_ELEMENT (TempoMap)
   QML_UNCREATABLE ("")
 
@@ -158,6 +165,48 @@ public:
       return;
     tempo_map_.set_sample_rate (units::sample_rate (sampleRate));
     Q_EMIT sampleRateChanged ();
+  }
+
+  // Base tempo at tick 0 (governs the region from tick 0 up to the first
+  // inserted tempo event, or the whole timeline if none).
+  double baseBpm () const { return tempo_map_.base_bpm ().in (units::bpm); }
+  void   setBaseBpm (double bpm)
+  {
+    if (qFuzzyCompare (bpm, baseBpm ()))
+      return;
+    tempo_map_.set_base_bpm (units::bpm (bpm));
+    rebuildTempoWrappers ();
+    Q_EMIT baseBpmChanged ();
+    Q_EMIT tempoEventsChanged ();
+  }
+
+  int baseTimeSignatureNumerator () const
+  {
+    return tempo_map_.base_time_signature ().numerator;
+  }
+  int baseTimeSignatureDenominator () const
+  {
+    return tempo_map_.base_time_signature ().denominator;
+  }
+  void setBaseTimeSignatureNumerator (int numerator)
+  {
+    if (numerator == baseTimeSignatureNumerator ())
+      return;
+    tempo_map_.set_base_time_signature (
+      numerator, baseTimeSignatureDenominator ());
+    rebuildTimeSigWrappers ();
+    Q_EMIT baseTimeSignatureChanged ();
+    Q_EMIT timeSignatureEventsChanged ();
+  }
+  void setBaseTimeSignatureDenominator (int denominator)
+  {
+    if (denominator == baseTimeSignatureDenominator ())
+      return;
+    tempo_map_.set_base_time_signature (
+      baseTimeSignatureNumerator (), denominator);
+    rebuildTimeSigWrappers ();
+    Q_EMIT baseTimeSignatureChanged ();
+    Q_EMIT timeSignatureEventsChanged ();
   }
 
   Q_INVOKABLE void
@@ -247,6 +296,8 @@ Q_SIGNALS:
   void tempoEventsChanged ();
   void timeSignatureEventsChanged ();
   void sampleRateChanged ();
+  void baseBpmChanged ();
+  void baseTimeSignatureChanged ();
 
 private:
   void rebuildTempoWrappers ()

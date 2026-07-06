@@ -30,8 +30,11 @@ namespace zrythm::dsp
  * adjust to time signature changes. A precondition for this is that tempo
  * events are only added after all time signature events are added.
  *
- * @note If no events are added, the tempo map will use defaults which can be
- * modified.
+ * @note The map always carries a base tempo (@ref base_bpm_) and base time
+ * signature (@ref base_time_sig_) anchored at tick 0. These govern the region
+ * from tick 0 up to the first inserted event (as a constant segment), or the
+ * whole timeline if no events exist. An inserted event at tick 0 shadows the
+ * base for the region it covers.
  *
  * @tparam PPQ Pulses (ticks) per quarter note
  */
@@ -110,6 +113,7 @@ public:
   explicit FixedPpqTempoMap (units::precise_sample_rate_t sampleRate)
       : sample_rate_ (sampleRate)
   {
+    rebuild_time_signature_cache ();
   }
 
   /// Set the sample rate
@@ -193,19 +197,20 @@ public:
   units::bpm_t tempo_at_tick (units::tick_t tick) const;
 
   /**
-   * @brief Read-only view of all tempo events, sorted ascending by tick.
+   * @brief Read-only view of all inserted tempo events, sorted ascending by
+   * tick.
    *
-   * When empty, the default tempo (set via @ref set_default_bpm, 120 BPM by
-   * default) applies everywhere.
+   * The base tempo (@ref base_bpm_) governs any region not covered by these
+   * events, starting from tick 0.
    */
   std::span<const TempoEvent> tempo_events () const noexcept { return events_; }
 
   /**
-   * @brief Read-only view of all time signature events, sorted ascending by
-   * tick.
+   * @brief Read-only view of all inserted time signature events, sorted
+   * ascending by tick.
    *
-   * When empty, the default time signature (set via @ref
-   * set_default_time_signature, 4/4 by default) applies everywhere.
+   * The base time signature (@ref base_time_sig_) governs any region not
+   * covered by these events, starting from tick 0.
    */
   std::span<const TimeSignatureEvent> time_signature_events () const noexcept
   {
@@ -236,25 +241,64 @@ public:
   /// Get current sample rate
   auto get_sample_rate () const { return sample_rate_; }
 
-  void set_default_bpm (units::bpm_t bpm) { default_tempo_.bpm = bpm; }
-  void set_default_time_signature (int numerator, int denominator)
+  /// Base tempo at tick 0.
+  units::bpm_t base_bpm () const { return base_bpm_; }
+
+  /// Set the base tempo at tick 0 and recompute the lead-segment timing.
+  void set_base_bpm (units::bpm_t bpm)
   {
-    default_time_sig_.numerator = numerator;
-    default_time_sig_.denominator = denominator;
+    base_bpm_ = bpm;
+    rebuild_cumulative_times ();
+  }
+
+  /// Base time signature at tick 0.
+  const TimeSignatureEvent &base_time_signature () const
+  {
+    return base_time_sig_;
+  }
+
+  /// Set the base time signature at tick 0.
+  void set_base_time_signature (int numerator, int denominator)
+  {
+    throw_if_invalid_time_signature (numerator, denominator);
+    base_time_sig_.numerator = numerator;
+    base_time_sig_.denominator = denominator;
+    rebuild_time_signature_cache ();
+  }
+
+  /// Read-only view of the time signature events with the base signature
+  /// prepended at tick 0 when no inserted event sits at tick 0. Backed by a
+  /// cache (@ref effective_time_sig_events_) rebuilt on mutation, so the read
+  /// path is allocation-free.
+  ///
+  /// @note Realtime safety relies on a caller-enforced contract: the cache
+  /// must not be mutated while the audio thread is mid-read. All mutation
+  /// entry points (add/remove/clear/set_base and project reload) must run
+  /// while the engine is stopped or paused.
+  std::span<const TimeSignatureEvent>
+  effective_time_signature_events () const noexcept
+  {
+    return effective_time_sig_events_;
   }
 
 private:
   /// Rebuild cumulative time cache
   void rebuild_cumulative_times ();
 
+  /// Rebuild the cached effective time signature view
+  /// (@ref effective_time_sig_events_).
+  void rebuild_time_signature_cache ();
+
+  /// Throw std::invalid_argument if (numerator, denominator) is not a usable
+  /// time signature: numerator >= 1 and denominator a power-of-two in
+  /// [1, 128] (i.e. one of 1, 2, 4, 8, 16, 32, 64, 128).
+  static void throw_if_invalid_time_signature (int numerator, int denominator);
+
   /// Compute time duration for a segment between two tempo events
   units::precise_second_t compute_segment_time (
     const TempoEvent &start,
     const TempoEvent &end,
     units::tick_t     segmentTicks) const;
-
-  auto get_events_or_default () const;
-  auto get_time_signature_events_or_default () const;
 
   /// Clear all tempo events
   void clear_tempo_events ()
@@ -264,10 +308,16 @@ private:
   }
 
   /// Clear all time signature events
-  void clear_time_signature_events () { time_sig_events_.clear (); }
+  void clear_time_signature_events ()
+  {
+    time_sig_events_.clear ();
+    rebuild_time_signature_cache ();
+  }
 
   static constexpr std::string_view kTempoChangesKey = "tempoChanges";
   static constexpr std::string_view kTimeSignaturesKey = "timeSignatures";
+  static constexpr std::string_view kBaseBpmKey = "baseBpm";
+  static constexpr std::string_view kBaseTimeSignatureKey = "baseTimeSignature";
   friend void to_json (nlohmann::json &j, const FixedPpqTempoMap &tempo_map);
   friend void from_json (const nlohmann::json &j, FixedPpqTempoMap &tempo_map);
 
@@ -276,21 +326,20 @@ private:
   static constexpr auto        ticks_per_sixteenth_ =
     from_nttp (PPQ) / 4; ///< Ticks per sixteenth note (PPQ/4)
 
-  static constexpr auto DEFAULT_BPM_EVENT = TempoEvent{
-    units::ticks (0), units::bpm (120.0), CurveType::Constant
-  }; ///< Default tempo
-  static constexpr auto DEFAULT_TIME_SIG_EVENT =
-    TimeSignatureEvent{ units::ticks (0), 4, 4 }; ///< Default time signature
-  static constexpr auto DEFAULT_CUMULATIVE_SECONDS = units::seconds (0.0);
-
-  // Default tempo and time signature to be used when no events are present
-  TempoEvent         default_tempo_{ DEFAULT_BPM_EVENT };
-  TimeSignatureEvent default_time_sig_{ DEFAULT_TIME_SIG_EVENT };
+  // Base tempo and time signature anchored at tick 0. These govern the region
+  // from tick 0 up to the first inserted event (constant), unless an inserted
+  // event exists at tick 0.
+  units::bpm_t       base_bpm_{ units::bpm (120.0) };
+  TimeSignatureEvent base_time_sig_{ units::ticks (0), 4, 4 };
 
   std::vector<TempoEvent>         events_;          ///< Tempo events
   std::vector<TimeSignatureEvent> time_sig_events_; ///< Time signature events
   std::vector<units::precise_second_t>
     cumulative_seconds_; ///< Cumulative seconds at tempo events
+  // Cache of time-signature events with the base signature prepended at tick 0
+  // when no inserted event sits there. Rebuilt on every mutation so the read
+  // path (@ref effective_time_signature_events) stays allocation-free.
+  std::vector<TimeSignatureEvent> effective_time_sig_events_;
 };
 
 /**

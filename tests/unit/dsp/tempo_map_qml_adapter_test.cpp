@@ -57,6 +57,69 @@ TEST_F (TempoMapWrapperTest, InitialState)
   EXPECT_DOUBLE_EQ (wrapper_->sampleRate (), 44100.0);
 }
 
+// Test the base tempo setter at the QML adapter layer: value change,
+// behavioral effect on tempoAtTick(0), and signal emission contract.
+TEST_F (TempoMapWrapperTest, BaseBpmSetter)
+{
+  QSignalSpy base_spy (wrapper_.get (), &TempoMapWrapper::baseBpmChanged);
+  QSignalSpy events_spy (wrapper_.get (), &TempoMapWrapper::tempoEventsChanged);
+
+  // Default is 120 BPM.
+  EXPECT_DOUBLE_EQ (wrapper_->baseBpm (), 120.0);
+
+  // Change to 150.
+  wrapper_->setBaseBpm (150.0);
+  EXPECT_EQ (base_spy.count (), 1);
+  EXPECT_EQ (events_spy.count (), 1);
+  EXPECT_DOUBLE_EQ (wrapper_->baseBpm (), 150.0);
+  // Base tempo drives the lookup at tick 0 (no inserted events).
+  EXPECT_DOUBLE_EQ (wrapper_->tempoAtTick (0), 150.0);
+
+  // No-op when unchanged: neither signal fires.
+  wrapper_->setBaseBpm (150.0);
+  EXPECT_EQ (base_spy.count (), 1);
+  EXPECT_EQ (events_spy.count (), 1);
+}
+
+// Test the base time signature setters at the QML adapter layer: value change,
+// behavioral effect on timeSignature...AtTick(0), and signal emission
+// contract (both baseTimeSignatureChanged and timeSignatureEventsChanged).
+TEST_F (TempoMapWrapperTest, BaseTimeSignatureSetters)
+{
+  QSignalSpy base_spy (
+    wrapper_.get (), &TempoMapWrapper::baseTimeSignatureChanged);
+  QSignalSpy events_spy (
+    wrapper_.get (), &TempoMapWrapper::timeSignatureEventsChanged);
+
+  // Defaults are 4/4.
+  EXPECT_EQ (wrapper_->baseTimeSignatureNumerator (), 4);
+  EXPECT_EQ (wrapper_->baseTimeSignatureDenominator (), 4);
+
+  // Change numerator to 3.
+  wrapper_->setBaseTimeSignatureNumerator (3);
+  EXPECT_EQ (base_spy.count (), 1);
+  EXPECT_EQ (events_spy.count (), 1);
+  EXPECT_EQ (wrapper_->baseTimeSignatureNumerator (), 3);
+  EXPECT_EQ (wrapper_->baseTimeSignatureDenominator (), 4);
+
+  // Change denominator to 8.
+  wrapper_->setBaseTimeSignatureDenominator (8);
+  EXPECT_EQ (base_spy.count (), 2);
+  EXPECT_EQ (events_spy.count (), 2);
+  EXPECT_EQ (wrapper_->baseTimeSignatureNumerator (), 3);
+  EXPECT_EQ (wrapper_->baseTimeSignatureDenominator (), 8);
+
+  // Base time signature drives the lookup at tick 0 (no inserted events).
+  EXPECT_EQ (wrapper_->timeSignatureNumeratorAtTick (0), 3);
+  EXPECT_EQ (wrapper_->timeSignatureDenominatorAtTick (0), 8);
+
+  // No-op when unchanged: neither signal fires.
+  wrapper_->setBaseTimeSignatureNumerator (3);
+  wrapper_->setBaseTimeSignatureDenominator (8);
+  EXPECT_EQ (base_spy.count (), 2);
+  EXPECT_EQ (events_spy.count (), 2);
+}
+
 // Test tempo event signals and wrappers
 TEST_F (TempoMapWrapperTest, TempoEventManagement)
 {
@@ -66,12 +129,13 @@ TEST_F (TempoMapWrapperTest, TempoEventManagement)
   wrapper_->addTempoEvent (1920, 140.0, TempoEventWrapper::CurveType::Constant);
   EXPECT_EQ (spy.count (), 1);
 
-  // Verify wrapper count
+  // Verify wrapper count (only inserted events; base tempo is a separate
+  // scalar property, not an entry in the list).
   auto tempo_events = wrapper_->tempoEvents ();
-  EXPECT_EQ (tempo_events.count (&tempo_events), 2);
+  EXPECT_EQ (tempo_events.count (&tempo_events), 1);
 
   // Verify new event properties
-  auto new_event = tempo_events.at (&tempo_events, 1);
+  auto new_event = tempo_events.at (&tempo_events, 0);
   EXPECT_EQ (new_event->tick (), 1920);
   EXPECT_DOUBLE_EQ (new_event->bpm (), 140.0);
   EXPECT_EQ (new_event->curve (), TempoEventWrapper::CurveType::Constant);
@@ -86,12 +150,13 @@ TEST_F (TempoMapWrapperTest, TimeSignatureManagement)
   wrapper_->addTimeSignatureEvent (1920, 3, 4);
   EXPECT_EQ (spy.count (), 1);
 
-  // Verify wrapper count
+  // Verify wrapper count (only inserted events; base time signature is a
+  // separate scalar property).
   auto time_sig_events = wrapper_->timeSignatureEvents ();
-  EXPECT_EQ (time_sig_events.count (&time_sig_events), 2);
+  EXPECT_EQ (time_sig_events.count (&time_sig_events), 1);
 
   // Verify new event properties
-  auto new_sig = time_sig_events.at (&time_sig_events, 1);
+  auto new_sig = time_sig_events.at (&time_sig_events, 0);
   EXPECT_EQ (new_sig->tick (), 1920);
   EXPECT_EQ (new_sig->numerator (), 3);
   EXPECT_EQ (new_sig->denominator (), 4);
@@ -123,21 +188,19 @@ TEST_F (TempoMapWrapperTest, ListPropertyAccess)
   wrapper_->addTempoEvent (1920, 140.0, TempoEventWrapper::CurveType::Constant);
   wrapper_->addTempoEvent (3840, 160.0, TempoEventWrapper::CurveType::Linear);
 
-  // Verify tempo events
+  // Verify tempo events (only inserted events; base tempo is separate).
   auto tempo_events = wrapper_->tempoEvents ();
-  ASSERT_EQ (tempo_events.count (&tempo_events), 3);
+  ASSERT_EQ (tempo_events.count (&tempo_events), 2);
 
   // Verify order (should be sorted by tick)
-  EXPECT_EQ (tempo_events.at (&tempo_events, 0)->tick (), 0);
-  EXPECT_EQ (tempo_events.at (&tempo_events, 1)->tick (), 1920);
-  EXPECT_EQ (tempo_events.at (&tempo_events, 2)->tick (), 3840);
+  EXPECT_EQ (tempo_events.at (&tempo_events, 0)->tick (), 1920);
+  EXPECT_EQ (tempo_events.at (&tempo_events, 1)->tick (), 3840);
 
   // Verify time signature events
   auto time_sig_events = wrapper_->timeSignatureEvents ();
-  ASSERT_EQ (time_sig_events.count (&time_sig_events), 3);
-  EXPECT_EQ (time_sig_events.at (&time_sig_events, 0)->tick (), 0);
-  EXPECT_EQ (time_sig_events.at (&time_sig_events, 1)->tick (), 1920);
-  EXPECT_EQ (time_sig_events.at (&time_sig_events, 2)->tick (), 3840);
+  ASSERT_EQ (time_sig_events.count (&time_sig_events), 2);
+  EXPECT_EQ (time_sig_events.at (&time_sig_events, 0)->tick (), 1920);
+  EXPECT_EQ (time_sig_events.at (&time_sig_events, 1)->tick (), 3840);
 }
 
 // Test wrapper regeneration on underlying changes
@@ -151,12 +214,12 @@ TEST_F (TempoMapWrapperTest, UnderlyingChanges)
   // Manually trigger rebuild (normally done via signals in real app)
   wrapper_->rebuildWrappers ();
 
-  // Verify updates
+  // Verify updates (only inserted events; base values are separate scalars).
   auto tempo_events = wrapper_->tempoEvents ();
-  EXPECT_EQ (tempo_events.count (&tempo_events), 2);
+  EXPECT_EQ (tempo_events.count (&tempo_events), 1);
 
   auto time_sig_events = wrapper_->timeSignatureEvents ();
-  EXPECT_EQ (time_sig_events.count (&time_sig_events), 2);
+  EXPECT_EQ (time_sig_events.count (&time_sig_events), 1);
 }
 
 // Test musical position conversion
@@ -245,19 +308,19 @@ TEST_F (TempoMapWrapperTest, ClearTempoEvents)
   wrapper_->addTempoEvent (1920, 160.0, TempoEventWrapper::CurveType::Linear);
   wrapper_->addTempoEvent (3840, 180.0, TempoEventWrapper::CurveType::Constant);
 
-  // Verify events were added
+  // Verify events were added (only inserted events; base tempo is separate).
   auto tempo_events = wrapper_->tempoEvents ();
-  EXPECT_EQ (tempo_events.count (&tempo_events), 4); // 3 + default
+  EXPECT_EQ (tempo_events.count (&tempo_events), 3);
 
   // Clear tempo events
   wrapper_->clearTempoEvents ();
   EXPECT_EQ (spy.count (), 4); // Signal emitted during rebuild
 
-  // Verify all tempo events are cleared (only default remains)
+  // Verify all tempo events are cleared
   tempo_events = wrapper_->tempoEvents ();
-  EXPECT_EQ (tempo_events.count (&tempo_events), 0); // No explicit events
+  EXPECT_EQ (tempo_events.count (&tempo_events), 0);
 
-  // Verify tempo lookup returns default
+  // Verify tempo lookup returns base tempo
   EXPECT_DOUBLE_EQ (wrapper_->tempoAtTick (960), 120.0);
   EXPECT_DOUBLE_EQ (wrapper_->tempoAtTick (1920), 120.0);
   EXPECT_DOUBLE_EQ (wrapper_->tempoAtTick (3840), 120.0);
@@ -273,19 +336,20 @@ TEST_F (TempoMapWrapperTest, ClearTimeSignatureEvents)
   wrapper_->addTimeSignatureEvent (3840, 5, 8);
   wrapper_->addTimeSignatureEvent (5760, 7, 16);
 
-  // Verify events were added
+  // Verify events were added (only inserted events; base time signature is
+  // separate).
   auto time_sig_events = wrapper_->timeSignatureEvents ();
-  EXPECT_EQ (time_sig_events.count (&time_sig_events), 4); // 3 + default
+  EXPECT_EQ (time_sig_events.count (&time_sig_events), 3);
 
   // Clear time signature events
   wrapper_->clearTimeSignatureEvents ();
   EXPECT_EQ (spy.count (), 4); // Signal emitted during rebuild
 
-  // Verify all time signature events are cleared (only default remains)
+  // Verify all time signature events are cleared
   time_sig_events = wrapper_->timeSignatureEvents ();
-  EXPECT_EQ (time_sig_events.count (&time_sig_events), 0); // No explicit events
+  EXPECT_EQ (time_sig_events.count (&time_sig_events), 0);
 
-  // Verify time signature lookup returns default
+  // Verify time signature lookup returns base time signature
   EXPECT_EQ (wrapper_->timeSignatureNumeratorAtTick (1920), 4);
   EXPECT_EQ (wrapper_->timeSignatureDenominatorAtTick (1920), 4);
   EXPECT_EQ (wrapper_->timeSignatureNumeratorAtTick (3840), 4);
@@ -368,11 +432,11 @@ TEST_F (TempoMapWrapperTest, ClearAndAddNewEvents)
   EXPECT_EQ (wrapper_->timeSignatureNumeratorAtTick (960), 6);
   EXPECT_EQ (wrapper_->timeSignatureDenominatorAtTick (960), 8);
 
-  // Verify wrapper counts
+  // Verify wrapper counts (only inserted events; base values are separate).
   auto tempoEvents = wrapper_->tempoEvents ();
   auto timeSigEvents = wrapper_->timeSignatureEvents ();
-  EXPECT_EQ (tempoEvents.count (&tempoEvents), 2);     // 1 + default
-  EXPECT_EQ (timeSigEvents.count (&timeSigEvents), 2); // 1 + default
+  EXPECT_EQ (tempoEvents.count (&tempoEvents), 1);
+  EXPECT_EQ (timeSigEvents.count (&timeSigEvents), 1);
 }
 
 // Test musical position after clearing

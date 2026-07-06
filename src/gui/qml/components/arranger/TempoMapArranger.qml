@@ -72,6 +72,7 @@ Arranger {
       scrollXPlusWidth: root.scrollXPlusWidth
       selectionModel: root.arrangerSelectionModel
       tempoObjectManager: root.tempoObjectManager
+      tempoMap: root.tempoMap
       width: root.scrollViewWidth
       x: root.scrollX
     }

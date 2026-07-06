@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "dsp/tempo_map_qml_adapter.h"
 #include "structure/arrangement/tempo_object_manager.h"
 
 #include <QColor>
@@ -35,6 +36,9 @@ class TempoCurveCanvasItem : public QCanvasPainterItem
       tempoObjectManager WRITE setTempoObjectManager NOTIFY
         tempoObjectManagerChanged)
   Q_PROPERTY (
+    zrythm::dsp::TempoMapWrapper * tempoMap READ tempoMap WRITE setTempoMap
+      NOTIFY tempoMapChanged)
+  Q_PROPERTY (
     qreal pxPerTick READ pxPerTick WRITE setPxPerTick NOTIFY pxPerTickChanged)
   Q_PROPERTY (qreal scrollX READ scrollX WRITE setScrollX NOTIFY scrollXChanged)
   Q_PROPERTY (
@@ -63,6 +67,10 @@ public:
   }
   void
   setTempoObjectManager (structure::arrangement::TempoObjectManager * manager);
+  dsp::TempoMapWrapper * tempoMap () const { return tempo_map_; }
+  void                   setTempoMap (dsp::TempoMapWrapper * wrapper);
+  /// Base tempo at tick 0 from the bound tempo map (120 if unbound).
+  double baseBpm () const;
   qreal  pxPerTick () const { return px_per_tick_; }
   void   setPxPerTick (qreal px);
   qreal  scrollX () const { return scroll_x_; }
@@ -80,6 +88,7 @@ public:
 
 Q_SIGNALS:
   void tempoObjectManagerChanged ();
+  void tempoMapChanged ();
   void pxPerTickChanged ();
   void scrollXChanged ();
   void scrollXPlusWidthChanged ();
@@ -90,6 +99,7 @@ Q_SIGNALS:
 
 private:
   QPointer<structure::arrangement::TempoObjectManager> manager_;
+  QPointer<dsp::TempoMapWrapper>                       tempo_map_;
   qreal                                                px_per_tick_ = 0.0;
   qreal                                                scroll_x_ = 0.0;
   qreal                         scroll_x_plus_width_ = 0.0;

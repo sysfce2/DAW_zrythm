@@ -42,13 +42,15 @@ private:
     bool   linear; ///< true if the curve from this event to the next is linear
   };
 
-  QColor                        curve_color_{ "#009DFF" };
-  float                         scroll_x_{ 0.0f };
-  float                         scroll_x_plus_width_{ 0.0f };
-  float                         px_per_tick_{ 0.0f };
-  float                         lane_height_{ 0.0f };
-  float                         min_bpm_{ 100.0f };
-  float                         max_bpm_{ 160.0f };
+  QColor curve_color_{ "#009DFF" };
+  float  scroll_x_{ 0.0f };
+  float  scroll_x_plus_width_{ 0.0f };
+  float  px_per_tick_{ 0.0f };
+  float  lane_height_{ 0.0f };
+  float  min_bpm_{ 100.0f };
+  float  max_bpm_{ 160.0f };
+  // Base tempo at tick 0 (governs the region from 0 up to the first object).
+  double                        base_bpm_{ 120.0 };
   std::vector<CachedTempoEvent> cached_events_;
 };
 

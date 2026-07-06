@@ -24,6 +24,7 @@ TempoCurveCanvasRenderer::synchronize (QCanvasPainterItem * item)
   scroll_x_plus_width_ = static_cast<float> (tempo_item->scrollXPlusWidth ());
   px_per_tick_ = static_cast<float> (tempo_item->pxPerTick ());
   lane_height_ = static_cast<float> (tempo_item->height ());
+  base_bpm_ = tempo_item->baseBpm ();
 
   cached_events_.clear ();
 
@@ -67,6 +68,12 @@ TempoCurveCanvasRenderer::synchronize (QCanvasPainterItem * item)
   // Offsetting selected events may break tick ordering; keep the array sorted
   // so the per-pixel interpolation (binary search) stays valid.
   std::ranges::sort (cached_events_, {}, &CachedTempoEvent::tick);
+
+  // Prepend the base tempo at tick 0 unless an inserted object already sits
+  // there (in which case the object governs and shadows the base).
+  if (cached_events_.empty () || cached_events_.front ().tick > 0.0)
+    cached_events_.insert (
+      cached_events_.begin (), CachedTempoEvent{ 0.0, base_bpm_, false });
 
   // Project-wide min/max bpm with padding and a minimum spread so a single
   // tempo object (or several identical tempos) do not collapse to a flat line.
