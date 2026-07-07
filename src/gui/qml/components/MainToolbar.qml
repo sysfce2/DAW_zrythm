@@ -29,23 +29,6 @@ ZrythmToolBar {
     }
   ]
   leftItems: [
-    ToolButton {
-      id: toggleLeftDock
-
-      checkable: true
-      icon.source: Qt.resolvedUrl("../icons/gnome-icon-library/dock-left-symbolic.svg")
-
-      Synchronizer on checked {
-        sourceObject: root.appSettings
-        sourceProperty: "leftPanelVisible"
-      }
-
-      ToolTip {
-        text: qsTr("Toggle Left Panel")
-      }
-    },
-    ToolSeparator {
-    },
     UndoSplitButton {
       id: undoBtn
 
@@ -93,11 +76,43 @@ ZrythmToolBar {
     DspLoadIndicator {
       id: dspLoadIndicator
     },
+    ToolSeparator {
+    },
+    ToolButton {
+      id: toggleLeftDock
+
+      checkable: true
+      icon.source: ResourceManager.getIconUrl("gnome-icon-library", "dock-left-symbolic.svg")
+
+      Synchronizer on checked {
+        sourceObject: root.appSettings
+        sourceProperty: "leftPanelVisible"
+      }
+
+      ToolTip {
+        text: qsTr("Toggle Left Panel")
+      }
+    },
+    ToolButton {
+      id: toggleBottomDock
+
+      checkable: true
+      icon.source: ResourceManager.getIconUrl("gnome-icon-library", "dock-bottom-symbolic.svg")
+
+      Synchronizer on checked {
+        sourceObject: root.appSettings
+        sourceProperty: "bottomPanelVisible"
+      }
+
+      ToolTip {
+        text: qsTr("Toggle Bottom Panel")
+      }
+    },
     ToolButton {
       id: toggleRightDock
 
       checkable: true
-      icon.source: Qt.resolvedUrl("../icons/gnome-icon-library/dock-right-symbolic.svg")
+      icon.source: ResourceManager.getIconUrl("gnome-icon-library", "dock-right-symbolic.svg")
 
       Synchronizer on checked {
         sourceObject: root.appSettings

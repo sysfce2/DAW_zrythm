@@ -6,6 +6,7 @@ import QtQuick
 import QtQuick.Controls
 import Zrythm
 import ZrythmStyle
+import Qt.labs.synchronizer
 
 MenuBar {
   id: root
@@ -52,6 +53,42 @@ MenuBar {
 
   Menu {
     title: qsTr("&View")
+
+    MenuItem {
+      checkable: true
+      icon.source: ResourceManager.getIconUrl("gnome-icon-library", "dock-left-symbolic.svg")
+      text: qsTr("Left Panel")
+
+      Synchronizer on checked {
+        sourceObject: GlobalState.application.appSettings
+        sourceProperty: "leftPanelVisible"
+      }
+    }
+
+    MenuItem {
+      checkable: true
+      icon.source: ResourceManager.getIconUrl("gnome-icon-library", "dock-bottom-symbolic.svg")
+      text: qsTr("Bottom Panel")
+
+      Synchronizer on checked {
+        sourceObject: GlobalState.application.appSettings
+        sourceProperty: "bottomPanelVisible"
+      }
+    }
+
+    MenuItem {
+      checkable: true
+      icon.source: ResourceManager.getIconUrl("gnome-icon-library", "dock-right-symbolic.svg")
+      text: qsTr("Right Panel")
+
+      Synchronizer on checked {
+        sourceObject: GlobalState.application.appSettings
+        sourceProperty: "rightPanelVisible"
+      }
+    }
+
+    MenuSeparator {
+    }
 
     Menu {
       title: qsTr("Language")
@@ -183,11 +220,11 @@ MenuBar {
 
       MenuItem {
         checkable: true
-        checked: GlobalState.application.appSettings.showCacheActivity
         text: qsTr("Show Cache Activity")
 
-        onToggled: {
-          GlobalState.application.appSettings.showCacheActivity = checked;
+        Synchronizer on checked {
+          sourceObject: GlobalState.application.appSettings
+          sourceProperty: "showCacheActivity"
         }
       }
     }
