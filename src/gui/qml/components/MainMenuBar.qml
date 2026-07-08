@@ -140,9 +140,7 @@ MenuBar {
         icon.source: ResourceManager.getIconUrl("gnome-icon-library", "dark-mode-symbolic.svg")
         text: qsTr("Switch Light/Dark Theme")
 
-        onTriggered: {
-          ZrythmTheme.darkMode = !ZrythmTheme.darkMode;
-        }
+        onTriggered: ZrythmTheme.toggleDarkMode()
       }
 
       Menu {

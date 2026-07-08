@@ -36,6 +36,7 @@ QtObject {
       "bold": true
     })
   readonly property color celestialBlueColor: "#009DFF"
+  readonly property color clipContentColor: Qt.rgba(colorPalette.highlightedText.r, colorPalette.highlightedText.g, colorPalette.highlightedText.b, 0.85)
   readonly property Palette colorPalette: Palette {
     accent: root.primaryColor
     alternateBase: root.getColorBlendedTowardsContrast(root.buttonBackgroundColor)
@@ -60,9 +61,11 @@ QtObject {
     windowText: root.textColor
   }
   readonly property color dangerColor: "#D90368"
-  property bool darkMode: Application.styleHints.colorScheme === Qt.Dark
+  property bool darkMode: true
+  readonly property var darkOnlyThemeColors: [zrythmColor, jonquilYellowColor, springGreen, munsellRed]
   readonly property real disabledOpacityFactor: 0.7
   readonly property real downEnhancementFactor: lightenFactor // enhance things pressed down by 30%
+  readonly property color electricPurple: "#A654F7"
   readonly property font fadedTextFont: ({
       "family": root.fontFamily,
       "pixelSize": 11,
@@ -73,9 +76,9 @@ QtObject {
   readonly property color gunmetalColor: "#2E3138"
   readonly property real inactiveOpacityFactor: 0.85
   readonly property color jonquilYellowColor: "#FFD100"
+  readonly property var lightOnlyThemeColors: [gunmetalColor]
   readonly property real lightenFactor: 1.3 // lighten things up 10%, mainly used for hovering but can be used for other things like making parts of the UI stand out from the background
   readonly property color munsellRed: "#FF0040"
-  readonly property color electricPurple: "#A654F7"
   readonly property font normalTextFont: ({
       "family": root.fontFamily,
       "pixelSize": 12,
@@ -102,17 +105,17 @@ QtObject {
   readonly property FontLoader notoSansScFont: FontLoader {
     source: Qt.resolvedUrl("qrc:/qt/qml/Zrythm/fonts/NotoSansSC-VariableFont_wght.ttf")
   }
+  readonly property FontLoader notoSansSymbols2Font: FontLoader {
+    source: Qt.resolvedUrl("qrc:/qt/qml/Zrythm/fonts/NotoSansSymbols2-Regular.ttf")
+  }
+  readonly property FontLoader notoSansSymbolsFont: FontLoader {
+    source: Qt.resolvedUrl("qrc:/qt/qml/Zrythm/fonts/NotoSansSymbols-VariableFont_wght.ttf")
+  }
   readonly property FontLoader notoSansTcFont: FontLoader {
     source: Qt.resolvedUrl("qrc:/qt/qml/Zrythm/fonts/NotoSansTC-VariableFont_wght.ttf")
   }
   readonly property FontLoader notoSansThaiFont: FontLoader {
     source: Qt.resolvedUrl("qrc:/qt/qml/Zrythm/fonts/NotoSansThai-VariableFont_wdth_wght.ttf")
-  }
-  readonly property FontLoader notoSansSymbolsFont: FontLoader {
-    source: Qt.resolvedUrl("qrc:/qt/qml/Zrythm/fonts/NotoSansSymbols-VariableFont_wght.ttf")
-  }
-  readonly property FontLoader notoSansSymbols2Font: FontLoader {
-    source: Qt.resolvedUrl("qrc:/qt/qml/Zrythm/fonts/NotoSansSymbols2-Regular.ttf")
   }
   // used in contrast with textColor
 
@@ -123,7 +126,6 @@ QtObject {
     duration: root.animationDuration
     easing.type: root.animationEasingType
   }
-  readonly property color clipContentColor: Qt.rgba(colorPalette.highlightedText.r, colorPalette.highlightedText.g, colorPalette.highlightedText.b, 0.85)
   readonly property real scrollLoaderBufferPx: 64
   readonly property font semiBoldTextFont: ({
       "family": root.fontFamily,
@@ -190,6 +192,17 @@ QtObject {
 
   function isColorDark(arg: color): bool {
     return arg.hslLightness < 0.5;
+  }
+
+  function toggleDarkMode(): void {
+    darkMode = !darkMode;
+    if (darkMode && lightOnlyThemeColors.includes(primaryColor)) {
+      primaryColor = zrythmColor;
+    } else if (
+    // fall back to a light-mode-compatible color when switching to light
+    !darkMode && darkOnlyThemeColors.includes(primaryColor)) {
+      primaryColor = celestialBlueColor;
+    }
   }
 
   Component.onCompleted: {}

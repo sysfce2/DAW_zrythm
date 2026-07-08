@@ -132,9 +132,7 @@ ApplicationWindow {
         Action {
           text: qsTr("Switch Light/Dark Theme")
 
-          onTriggered: {
-            ZrythmTheme.darkMode = !ZrythmTheme.darkMode;
-          }
+          onTriggered: ZrythmTheme.toggleDarkMode()
         }
 
         Menu {
