@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2024 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2024, 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-FileCopyrightText: Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: GPL-3.0-only
 
@@ -11,11 +11,12 @@ T.MenuItem {
   id: control
 
   font: ZrythmTheme.semiBoldTextFont
-  // icon.height: 24
   icon.color: ZrythmTheme.colorPalette.windowText
   icon.width: ZrythmTheme.buttonHeight - 2 * control.padding
   implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset, implicitContentHeight + topPadding + bottomPadding, implicitIndicatorHeight + topPadding + bottomPadding)
   implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset, implicitContentWidth + leftPadding + rightPadding)
+  // icon.height: 24
+  opacity: ZrythmTheme.getOpacity(control.enabled, control.Window.active)
   padding: ZrythmTheme.buttonPadding
   spacing: ZrythmTheme.buttonPadding
 
