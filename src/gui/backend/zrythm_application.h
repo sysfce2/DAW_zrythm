@@ -5,7 +5,6 @@
 
 #include "engine/session/control_room.h"
 #include "gui/backend/alert_manager.h"
-#include "gui/backend/backend/theme_manager.h"
 #include "gui/backend/chord_preset_manager.h"
 #include "gui/backend/device_manager.h"
 #include "gui/backend/file_system_model.h"
@@ -32,8 +31,6 @@ namespace zrythm::gui
 class ZrythmApplication final : public QApplication
 {
   Q_OBJECT
-  Q_PROPERTY (
-    zrythm::gui::ThemeManager * themeManager READ themeManager CONSTANT FINAL)
   Q_PROPERTY (
     zrythm::utils::AppSettings * appSettings READ appSettings CONSTANT FINAL)
   Q_PROPERTY (
@@ -71,7 +68,6 @@ public:
   void setup_ipc ();
   void launch_engine_process ();
 
-  zrythm::gui::ThemeManager *           themeManager () const;
   zrythm::utils::AppSettings *          appSettings () const;
   zrythm::gui::ProjectManager *         projectManager () const;
   old_dsp::plugins::PluginManager *     pluginManager () const;

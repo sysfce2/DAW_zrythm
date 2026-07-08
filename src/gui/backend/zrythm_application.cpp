@@ -20,6 +20,7 @@
 #include <QFontDatabase>
 #include <QIcon>
 #include <QLocalSocket>
+#include <QPalette>
 #include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
@@ -62,7 +63,6 @@ public:
 
   std::unique_ptr<DirectoryManager>                     dir_manager_;
   utils::QObjectUniquePtr<AlertManager>                 alert_manager_;
-  utils::QObjectUniquePtr<ThemeManager>                 theme_manager_;
   utils::QObjectUniquePtr<TranslationManager>           translation_manager_;
   utils::QObjectUniquePtr<ProjectManager>               project_manager_;
   utils::QObjectUniquePtr<FileSystemModel>              file_system_model_;
@@ -179,7 +179,6 @@ ZrythmApplication::ZrythmApplication (int &argc, char ** argv)
 #endif
 
   impl_->alert_manager_ = utils::make_qobject_unique<AlertManager> (this);
-  impl_->theme_manager_ = utils::make_qobject_unique<ThemeManager> (this);
   impl_->project_manager_ =
     utils::make_qobject_unique<ProjectManager> (*impl_->app_settings_, this);
   impl_->translation_manager_ = utils::make_qobject_unique<TranslationManager> (
@@ -422,7 +421,21 @@ ZrythmApplication::setup_ui ()
 
   // note: this is the system palette - different from qtquick palette
   // it's just used to set the window frame color
-  setPalette (impl_->theme_manager_->palette_);
+  QPalette native_palette;
+  native_palette.setColor (QPalette::Window, QColor (32, 32, 32));
+  native_palette.setColor (QPalette::WindowText, Qt::white);
+  native_palette.setColor (QPalette::Base, QColor (55, 55, 55));
+  native_palette.setColor (QPalette::AlternateBase, QColor (45, 45, 45));
+  native_palette.setColor (QPalette::ToolTipBase, Qt::white);
+  native_palette.setColor (QPalette::ToolTipText, Qt::white);
+  native_palette.setColor (QPalette::Text, Qt::white);
+  native_palette.setColor (QPalette::Button, QColor (55, 55, 55));
+  native_palette.setColor (QPalette::ButtonText, Qt::white);
+  native_palette.setColor (QPalette::BrightText, Qt::red);
+  native_palette.setColor (QPalette::Link, QColor (42, 130, 218));
+  native_palette.setColor (QPalette::Highlight, QColor (42, 130, 218));
+  native_palette.setColor (QPalette::HighlightedText, Qt::black);
+  setPalette (native_palette);
 
   // Set font scaling TODO (if needed)
   // QSettings settings;
@@ -640,12 +653,6 @@ ZrythmApplication::~ZrythmApplication ()
     }
 
   Zrythm::deleteInstance ();
-}
-
-zrythm::gui::ThemeManager *
-ZrythmApplication::themeManager () const
-{
-  return impl_->theme_manager_.get ();
 }
 
 zrythm::utils::AppSettings *
