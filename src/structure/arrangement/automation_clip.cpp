@@ -40,19 +40,45 @@ AutomationClip::get_normalized_value_in_curve (
   return dy;
 }
 
-bool
-AutomationClip::curves_up (const AutomationPoint &ap) const
+std::pair<float, AutomationPoint *>
+AutomationClip::get_value_at_virt_tick (dsp::ContentTick virt_tick) const
 {
-  AutomationPoint * next_ap = get_next_ap (ap, true);
+  const auto sorted_points =
+    ArrangerObjectOwner<AutomationPoint>::get_sorted_children_view ();
+  if (sorted_points.empty ())
+    return { 0.0f, nullptr };
 
-  if (next_ap == nullptr)
-    return false;
+  const auto tick_of = [] (const AutomationPoint * ap) {
+    return ap->position ()->asTick ();
+  };
 
-  // comment from previous implementation which split normalized value and real
-  // value (currently all values are normalized):
-  /* fvalue can be equal in non-float automation even though there is a curve.
-   * use the normalized value instead */
-  return next_ap->value () > ap.value ();
+  const auto first_tick = tick_of (sorted_points.front ());
+  const auto last_tick = tick_of (sorted_points.back ());
+
+  if (virt_tick <= first_tick)
+    return { sorted_points.front ()->value (), sorted_points.front () };
+  if (virt_tick >= last_tick)
+    return { sorted_points.back ()->value (), sorted_points.back () };
+
+  auto it = std::ranges::lower_bound (sorted_points, virt_tick, {}, tick_of);
+  if (it == sorted_points.begin () || it == sorted_points.end ())
+    return { sorted_points.back ()->value (), sorted_points.back () };
+
+  auto * prev_ap = *std::ranges::prev (it);
+  auto * next_ap = *it;
+
+  const auto prev_tick = tick_of (prev_ap);
+  const auto next_tick = tick_of (next_ap);
+  if (next_tick <= prev_tick)
+    return { prev_ap->value (), prev_ap };
+
+  double t = (virt_tick - prev_tick) / (next_tick - prev_tick);
+  t = std::clamp (t, 0.0, 1.0);
+
+  const float val = dsp::evaluate_curve (
+    prev_ap->value (), next_ap->value (), prev_ap->curveOpts ()->algorithm (),
+    static_cast<float> (prev_ap->curveOpts ()->curviness ()), t);
+  return { val, prev_ap };
 }
 
 AutomationPoint *

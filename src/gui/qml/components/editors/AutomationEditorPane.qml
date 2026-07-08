@@ -103,6 +103,7 @@ GridLayout {
     arrangerSelectionModel: arrangerSelectionModel
     automationEditor: root.automationEditor
     clipEditor: root.clipEditor
+    uuidPropertyOperator: root.session.uuidPropertyOperator
     objectCreator: root.session.arrangerObjectCreator
     ruler: ruler
     selectionOperator: root.selectionOperator

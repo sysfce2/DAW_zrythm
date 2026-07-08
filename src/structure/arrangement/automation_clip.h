@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <utility>
+
+#include "dsp/tick_types.h"
 #include "structure/arrangement/arranger_object_owner.h"
 #include "structure/arrangement/automation_point.h"
 #include "structure/arrangement/clip.h"
@@ -64,10 +67,17 @@ public:
   get_normalized_value_in_curve (const AutomationPoint &ap, double x) const;
 
   /**
-   * Returns if the curve of the AutomationPoint curves upwards as you move
-   * right on the x axis.
+   * @brief Evaluates the automation curve at a content-tick position.
+   *
+   * Finds the segment containing @p virt_tick and samples it with
+   * @ref dsp::evaluate_curve using the curve options of the segment's start
+   * point.
+   *
+   * @return The normalized value at @p virt_tick and the AutomationPoint whose
+   *   curve segment governs that position (nullptr if there are no points).
    */
-  bool curves_up (const AutomationPoint &ap) const;
+  std::pair<float, AutomationPoint *>
+  get_value_at_virt_tick (dsp::ContentTick virt_tick) const;
 
   std::string
   get_field_name_for_serialization (const AutomationPoint *) const override

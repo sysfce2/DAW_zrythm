@@ -16,6 +16,7 @@ add_executable(zrythm_actions_unit_tests
   track_collection_operator_test.cpp
   track_creator_test.cpp
   track_operator_test.cpp
+  uuid_property_operator_test.cpp
 )
 
 set_target_properties(zrythm_actions_unit_tests PROPERTIES

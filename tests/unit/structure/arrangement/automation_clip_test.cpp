@@ -3,6 +3,7 @@
 
 #include "dsp/tempo_map.h"
 #include "dsp/tempo_map_qml_adapter.h"
+#include "dsp/tick_types.h"
 #include "structure/arrangement/arranger_object_all.h"
 #include "utils/object_registry.h"
 
@@ -157,20 +158,79 @@ TEST_F (AutomationClipTest, CurveCalculationLinearDown)
   EXPECT_DOUBLE_EQ (clip->get_normalized_value_in_curve (*point1, 1.0), 0.0);
 }
 
-TEST_F (AutomationClipTest, CurvesUp)
+TEST_F (AutomationClipTest, GetValueAtVirtTickEmptyClip)
 {
-  // Add points
+  auto [val, ap] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (50.0) });
+  EXPECT_EQ (ap, nullptr);
+  EXPECT_FLOAT_EQ (val, 0.0f);
+}
+
+TEST_F (AutomationClipTest, GetValueAtVirtTickSinglePoint)
+{
+  add_automation_point (0.5, 100);
+
+  // Before the point — held flat at the point's value
+  auto [val_before, ap_before] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (50.0) });
+  EXPECT_FLOAT_EQ (val_before, 0.5f);
+  EXPECT_EQ (ap_before, clip->get_children_view ()[0]);
+
+  // At/after the point — also held flat
+  auto [val_after, ap_after] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (150.0) });
+  EXPECT_FLOAT_EQ (val_after, 0.5f);
+  EXPECT_EQ (ap_after, clip->get_children_view ()[0]);
+}
+
+TEST_F (AutomationClipTest, GetValueAtVirtTickTwoPointsLinear)
+{
   add_automation_point (0.0, 100);
   add_automation_point (1.0, 200);
 
-  // Verify curve direction
-  auto point1 = clip->get_children_view ()[0];
-  EXPECT_TRUE (clip->curves_up (*point1));
+  // Before first — held flat at first point's value
+  auto [val_before, ap_before] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (50.0) });
+  EXPECT_FLOAT_EQ (val_before, 0.0f);
 
-  // Add descending points
-  add_automation_point (0.0, 300);
-  auto point3 = clip->get_children_view ()[2];
-  EXPECT_FALSE (clip->curves_up (*point3));
+  // Midpoint — linear interpolation gives 0.5
+  auto [val_mid, ap_mid] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (150.0) });
+  EXPECT_NEAR (val_mid, 0.5f, 1e-5f);
+  // Governed by the first point (segment start)
+  EXPECT_EQ (ap_mid, clip->get_children_view ()[0]);
+
+  // After last — held flat at last point's value
+  auto [val_after, ap_after] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (250.0) });
+  EXPECT_FLOAT_EQ (val_after, 1.0f);
+}
+
+TEST_F (AutomationClipTest, GetValueAtVirtTickDescending)
+{
+  add_automation_point (1.0, 100);
+  add_automation_point (0.0, 200);
+
+  // Midpoint — linear gives 0.5
+  auto [val_mid, ap_mid] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (150.0) });
+  EXPECT_NEAR (val_mid, 0.5f, 1e-5f);
+}
+
+TEST_F (AutomationClipTest, GetValueAtVirtTickAtPointBoundaries)
+{
+  add_automation_point (0.3, 100);
+  add_automation_point (0.7, 200);
+
+  // At first point exactly (<= triggers early return)
+  auto [val_at_first, ap_first] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (100.0) });
+  EXPECT_FLOAT_EQ (val_at_first, 0.3f);
+
+  // At last point exactly (>= triggers early return)
+  auto [val_at_last, ap_last] =
+    clip->get_value_at_virt_tick (dsp::ContentTick{ units::ticks (200.0) });
+  EXPECT_FLOAT_EQ (val_at_last, 0.7f);
 }
 
 TEST_F (AutomationClipTest, Serialization)

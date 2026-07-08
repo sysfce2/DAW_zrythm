@@ -17,6 +17,7 @@ target_sources(zrythm_actions_lib
     track_collection_operator.cpp
     track_creator.cpp
     track_operator.cpp
+    uuid_property_operator.cpp
   PUBLIC
     FILE_SET HEADERS
     BASE_DIRS ".."
@@ -33,6 +34,7 @@ target_sources(zrythm_actions_lib
       track_collection_operator.h
       track_creator.h
       track_operator.h
+      uuid_property_operator.h
 )
 
 target_include_directories(zrythm_actions_lib

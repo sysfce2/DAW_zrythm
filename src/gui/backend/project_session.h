@@ -10,6 +10,7 @@
 #include "actions/plugin_importer.h"
 #include "actions/plugin_operator.h"
 #include "actions/track_creator.h"
+#include "actions/uuid_property_operator.h"
 #include "controllers/recording_coordinator.h"
 #include "controllers/recording_materializer.h"
 #include "controllers/transport_controller.h"
@@ -66,6 +67,9 @@ class ProjectSession : public QObject
   Q_PROPERTY (
     zrythm::actions::FileImporter * fileImporter READ fileImporter CONSTANT FINAL)
   Q_PROPERTY (
+    zrythm::actions::UuidPropertyOperator * uuidPropertyOperator READ
+      uuidPropertyOperator CONSTANT FINAL)
+  Q_PROPERTY (
     zrythm::controllers::TransportController * transportController READ
       transportController CONSTANT FINAL)
   Q_PROPERTY (
@@ -94,6 +98,7 @@ public:
   actions::PluginImporter *                pluginImporter () const;
   actions::PluginOperator *                pluginOperator () const;
   actions::FileImporter *                  fileImporter () const;
+  actions::UuidPropertyOperator *          uuidPropertyOperator () const;
   controllers::TransportController *       transportController () const;
   controllers::RecordingCoordinator *      recordingCoordinator () const;
 
@@ -174,6 +179,7 @@ private:
   utils::QObjectUniquePtr<actions::PluginImporter> plugin_importer_;
   utils::QObjectUniquePtr<actions::PluginOperator> plugin_operator_;
   utils::QObjectUniquePtr<actions::FileImporter>   file_importer_;
+  utils::QObjectUniquePtr<actions::UuidPropertyOperator> uuid_property_operator_;
   utils::QObjectUniquePtr<controllers::TransportController> transport_controller_;
   utils::QObjectUniquePtr<controllers::RecordingCoordinator>
     recording_coordinator_;

@@ -44,6 +44,7 @@ target_sources(zrythm_test_helpers_lib
       helpers/mock_hardware_audio_interface.h
       helpers/mock_hardware_audio_interface_threaded.h
       helpers/mock_qobject.h
+      helpers/mock_uuid_object.h
       helpers/mock_settings_backend.h
       helpers/project_fixture.h
       helpers/project_json_comparators.h

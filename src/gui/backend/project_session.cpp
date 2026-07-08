@@ -76,6 +76,11 @@ ProjectSession::ProjectSession (
           *arranger_object_creator_,
           *track_creator_,
           this)),
+      uuid_property_operator_ (
+        utils::make_qobject_unique<actions::UuidPropertyOperator> (
+          *undo_stack_,
+          project_->get_registry (),
+          this)),
       transport_controller_ (
         utils::make_qobject_unique<controllers::TransportController> (
           *project_->transport_,
@@ -409,6 +414,12 @@ actions::FileImporter *
 ProjectSession::fileImporter () const
 {
   return file_importer_.get ();
+}
+
+actions::UuidPropertyOperator *
+ProjectSession::uuidPropertyOperator () const
+{
+  return uuid_property_operator_.get ();
 }
 
 controllers::TransportController *

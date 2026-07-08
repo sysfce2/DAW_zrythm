@@ -25,6 +25,7 @@ target_sources(zrythm_commands_lib
       route_track_command.h
       change_parameter_value_command.h
       change_qobject_property_command.h
+      change_uuid_identifiable_object_property_command.h
       edit_chord_object_command.h
       change_track_color_command.h
       change_track_comment_command.h

@@ -4,67 +4,19 @@
 #include <algorithm>
 #include <cmath>
 #include <ranges>
+#include <unordered_set>
 #include <utility>
 
 #include "dsp/tick_types.h"
 #include "gui/qquick/automation_clip_canvas_item.h"
 #include "gui/qquick/automation_clip_canvas_renderer.h"
 #include "structure/arrangement/arranger_object_all.h"
+#include "structure/arrangement/arranger_object_list_model.h"
 #include "structure/arrangement/clip.h"
 #include "structure/arrangement/loop_segment_iterator.h"
 
 namespace zrythm::gui::qquick
 {
-
-namespace
-{
-
-/// Evaluates the automation value at a virtual content-tick position and
-/// returns the value along with the AutomationPoint whose curve segment
-/// drives that position (nullptr if before the first point).
-auto
-eval_at_virt_tick (const auto &sorted_points, dsp::ContentTick virt_tick)
-  -> std::pair<float, const structure::arrangement::AutomationPoint *>
-{
-  using AP = structure::arrangement::AutomationPoint;
-
-  if (sorted_points.empty ())
-    return { 0.0f, nullptr };
-
-  const auto tick_of = [] (const AP * ap) {
-    return ap->position ()->asTick ();
-  };
-
-  const auto first_tick = tick_of (sorted_points.front ());
-  const auto last_tick = tick_of (sorted_points.back ());
-
-  if (virt_tick <= first_tick)
-    return { sorted_points.front ()->value (), sorted_points.front () };
-  if (virt_tick >= last_tick)
-    return { sorted_points.back ()->value (), sorted_points.back () };
-
-  auto it = std::ranges::lower_bound (sorted_points, virt_tick, {}, tick_of);
-  if (it == sorted_points.begin () || it == sorted_points.end ())
-    return { sorted_points.back ()->value (), sorted_points.back () };
-
-  const auto * prev_ap = *std::ranges::prev (it);
-  const auto * next_ap = *it;
-
-  const auto prev_tick = tick_of (prev_ap);
-  const auto next_tick = tick_of (next_ap);
-  if (next_tick <= prev_tick)
-    return { prev_ap->value (), prev_ap };
-
-  double t = (virt_tick - prev_tick) / (next_tick - prev_tick);
-  t = std::clamp (t, 0.0, 1.0);
-
-  const float val = dsp::evaluate_curve (
-    prev_ap->value (), next_ap->value (), prev_ap->curveOpts ()->algorithm (),
-    static_cast<float> (prev_ap->curveOpts ()->curviness ()), t);
-  return { val, prev_ap };
-}
-
-} // anonymous namespace
 
 void
 AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
@@ -76,6 +28,9 @@ AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
   canvas_height_ = static_cast<float> (canvas_item->height ());
   reference_width_ = canvas_item->effectiveReferenceWidth ();
   reference_x_ = canvas_item->referenceX ();
+  draw_points_ = canvas_item->drawPoints ();
+  apply_loops_ = canvas_item->applyLoops ();
+  hovered_x_ = canvas_item->hoveredX ();
 
   points_.clear ();
 
@@ -102,9 +57,9 @@ AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
   const double px_per_tick =
     static_cast<double> (reference_width_) / clip_ticks_d;
   // Extend beyond clip_ticks for looped clips or during loop-resize of a
-  // non-looped clip (loopPreview).
+  // non-looped clip (loopPreview). Source-only mode (editor) never extends.
   const auto display_end_tick =
-    (clip->looped () || canvas_item->loopPreview ())
+    apply_loops_ && (clip->looped () || canvas_item->loopPreview ())
       ? max (
           clip_ticks,
           dsp::ContentTick{ units::ticks (
@@ -112,55 +67,217 @@ AutomationClipCanvasRenderer::synchronize (QCanvasPainterItem * item)
       : clip_ticks;
   const double display_end_ticks_d = display_end_tick.asDouble ();
 
-  const auto add_point =
+  // Find the source segment governing a content tick. Returns (governing point
+  // P0, successor P1). P0 is the last real point at or before `tick` (or the
+  // first point if `tick` is before it, in which case the value is held flat
+  // and the successor is null).
+  const auto governing_at = [&sorted_points] (double tick)
+    -> std::pair<
+      const structure::arrangement::AutomationPoint *,
+      const structure::arrangement::AutomationPoint *> {
+    const auto tick_of = [] (const structure::arrangement::AutomationPoint * ap) {
+      return ap->position ()->asTick ().asDouble ();
+    };
+    const auto it = std::ranges::upper_bound (sorted_points, tick, {}, tick_of);
+    if (it == sorted_points.begin ())
+      return { *it, nullptr };
+    return {
+      *std::ranges::prev (it), (it != sorted_points.end ()) ? *it : nullptr
+    };
+  };
+
+  // Emit one control point at source tick `src_tick`, whose rendered segment
+  // runs to `next_src_tick`. The segment is a (possibly partial) slice of the
+  // source automation segment governing `src_tick`, so a loop boundary that
+  // cuts a curve mid-segment renders the true non-linear arc up to the cut
+  // (instead of treating the cut as a fresh segment).
+  const auto emit_point =
     [&] (
-      double abs_tick_d, float val,
-      const structure::arrangement::AutomationPoint * source_ap) {
+      double abs_tick_d, double src_tick, double next_src_tick, bool is_real,
+      const structure::arrangement::AutomationPoint * ap) {
       if (abs_tick_d < 0.0 || abs_tick_d > display_end_ticks_d)
         return;
 
+      const auto [gov, succ] = governing_at (src_tick);
+      const auto   opts = gov->curveOpts ();
+      const double gov_tick = gov->position ()->asTick ().asDouble ();
+      const float  seg_value_a = gov->value ();
+      const float  seg_value_b = succ ? succ->value () : seg_value_a;
+
+      double t_start = 0.0;
+      double t_max = 1.0;
+      if (succ != nullptr)
+        {
+          const double succ_tick = succ->position ()->asTick ().asDouble ();
+          const double span = succ_tick - gov_tick;
+          if (span > 0.0)
+            {
+              t_start = std::clamp ((src_tick - gov_tick) / span, 0.0, 1.0);
+              t_max = std::clamp ((next_src_tick - gov_tick) / span, 0.0, 1.0);
+            }
+        }
+
+      const float own_val = static_cast<float> (dsp::evaluate_curve (
+        seg_value_a, seg_value_b, opts->algorithm (),
+        static_cast<float> (opts->curviness ()), t_start));
+
       CachedControlPoint cp;
       cp.px = static_cast<float> (abs_tick_d * px_per_tick - reference_x_);
-      cp.val = val;
-      cp.py = canvas_height_ * (1.0f - val);
-      cp.curve_opts =
-        (source_ap != nullptr)
-          ? dsp::CurveOptions (
-              source_ap->curveOpts ()->curviness (),
-              source_ap->curveOpts ()->algorithm ())
-          : dsp::CurveOptions{};
-
+      cp.val = own_val;
+      cp.py = canvas_height_ * (1.0f - own_val);
+      cp.curve_opts = dsp::CurveOptions (opts->curviness (), opts->algorithm ());
+      cp.seg_value_a = seg_value_a;
+      cp.seg_value_b = seg_value_b;
+      cp.seg_t_start = static_cast<float> (t_start);
+      cp.seg_t_max = static_cast<float> (t_max);
+      cp.is_real_point = is_real && (ap == gov);
       points_.push_back (std::move (cp));
     };
 
-  structure::arrangement::for_each_loop_segment (
-    clip_start_ticks, loop_start_ticks, loop_end_ticks, display_end_tick,
-    [&] (const structure::arrangement::LoopSegment &seg) {
-      const double vs = seg.virt_start.asDouble ();
-      const double ve = seg.virt_end.asDouble ();
-      const double as = seg.abs_start.asDouble ();
-
-      // Add a boundary point at the segment start so curves that cross loop
-      // boundaries stay continuous.
+  // Emit the control points for one leg: source range [vs, ve] mapped to abs
+  // starting at @p as (abs_tick = as + (src_tick - vs)). Collects the real
+  // points falling inside the leg plus boundary events at vs/ve, so the region
+  // before the first point and after the last is emitted flat (governing_at
+  // returns a null successor there).
+  const auto emit_leg = [&] (double vs, double ve, double as) {
+    struct Event
+    {
+      double                                          tick;
+      bool                                            is_real;
+      const structure::arrangement::AutomationPoint * ap;
+    };
+    std::vector<Event> events;
+    events.push_back ({ vs, false, nullptr });
+    for (const auto * ap : sorted_points)
       {
-        auto [val, src_ap] = eval_at_virt_tick (sorted_points, seg.virt_start);
-        if (src_ap != nullptr)
-          add_point (as, val, src_ap);
+        const double t = ap->position ()->asTick ().asDouble ();
+        if (t >= vs && t <= ve)
+          events.push_back ({ t, true, ap });
       }
+    events.push_back ({ ve, false, nullptr });
 
-      // Add each automation point within this segment.
+    for (size_t i = 0; i + 1 < events.size (); ++i)
+      {
+        const double abs_tick = as + (events[i].tick - vs);
+        emit_point (
+          abs_tick, events[i].tick, events[i + 1].tick, events[i].is_real,
+          events[i].ap);
+      }
+    // Final boundary at ve: provides the px endpoint for the previous segment.
+    // Its own segment (the wrap) is zero-width, so paint() skips it.
+    const double abs_tick_end = as + (events.back ().tick - vs);
+    emit_point (
+      abs_tick_end, events.back ().tick, events.back ().tick, false, nullptr);
+  };
+
+  if (apply_loops_)
+    {
+      structure::arrangement::for_each_loop_segment (
+        clip_start_ticks, loop_start_ticks, loop_end_ticks, display_end_tick,
+        [&] (const structure::arrangement::LoopSegment &seg) {
+          emit_leg (
+            seg.virt_start.asDouble (), seg.virt_end.asDouble (),
+            seg.abs_start.asDouble ());
+        });
+    }
+  else
+    {
+      // Source-only mode (automation editor): emit the original sequence at
+      // the points' authored positions — no loop unwrapping, no clip-start
+      // shift — so the curve lines up exactly with the point delegates. The
+      // live drag delta is substituted into a re-sorted render-point list
+      // *before* segments are derived, so the curve tracks the dragged point
+      // in real time (and reorders correctly when it crosses a neighbour);
+      // patching px afterwards could never fix the stale neighbour
+      // connectivity.
+
+      const bool   drag_active = canvas_item->dragActive ();
+      const auto   dragged = canvas_item->draggedUuids ();
+      const double pos_delta =
+        drag_active ? canvas_item->dragDeltaPx () / px_per_tick : 0.0;
+      const float value_delta =
+        drag_active
+          ? -static_cast<float> (canvas_item->dragDeltaY ()) / canvas_height_
+          : 0.0f;
+
+      struct RenderPt
+      {
+        double            pos;
+        float             value;
+        dsp::CurveOptions opts;
+      };
+      std::vector<RenderPt> rpts;
+      rpts.reserve (sorted_points.size ());
       for (const auto * ap : sorted_points)
         {
-          const double ap_virt = ap->position ()->asTick ().asDouble ();
-          if (ap_virt < vs || ap_virt > ve)
-            continue;
-
-          const double abs_tick = as + (ap_virt - vs);
-          add_point (abs_tick, ap->value (), ap);
+          double pos = ap->position ()->asTick ().asDouble ();
+          float  val = ap->value ();
+          if (drag_active && dragged.contains (ap->get_uuid ()))
+            {
+              pos += pos_delta;
+              val = std::clamp (val + value_delta, 0.0f, 1.0f);
+            }
+          const auto opts = ap->curveOpts ();
+          rpts.push_back (
+            { pos, val,
+              dsp::CurveOptions (opts->curviness (), opts->algorithm ()) });
         }
-    });
+      std::ranges::sort (rpts, {}, &RenderPt::pos);
 
-  std::ranges::sort (points_, {}, &CachedControlPoint::px);
+      // The canvas spans from the leftmost (live) point (or the clip start,
+      // whichever is earlier) to the rightmost (live) point (or the clip end,
+      // whichever is later), so points dragged past either clip edge are still
+      // followed by the curve instead of being truncated.
+      const double effective_start = std::min (0.0, rpts.front ().pos);
+      const double effective_end = std::max (clip_ticks_d, rpts.back ().pos);
+
+      const auto px_of = [&] (double abs_tick) {
+        return static_cast<float> (abs_tick * px_per_tick - reference_x_);
+      };
+      const auto push =
+        [&] (
+          double abs_tick, float value, const dsp::CurveOptions &opts,
+          float seg_value_b, bool is_real) {
+          CachedControlPoint cp;
+          cp.px = px_of (abs_tick);
+          cp.val = value;
+          cp.py = canvas_height_ * (1.0f - value);
+          cp.curve_opts = opts;
+          cp.seg_value_a = value;
+          cp.seg_value_b = seg_value_b;
+          cp.seg_t_start = 0.0f;
+          cp.seg_t_max = 1.0f;
+          cp.is_real_point = is_real;
+          points_.push_back (std::move (cp));
+        };
+
+      // Flat lead-in from the effective start to the first point (only when
+      // the first point is past the effective start).
+      if (rpts.front ().pos > effective_start)
+        push (
+          effective_start, rpts.front ().value, rpts.front ().opts,
+          rpts.front ().value, false);
+
+      for (size_t i = 0; i < rpts.size (); ++i)
+        {
+          const bool  has_next = i + 1 < rpts.size ();
+          const float next_value = has_next ? rpts[i + 1].value : rpts[i].value;
+          push (rpts[i].pos, rpts[i].value, rpts[i].opts, next_value, true);
+        }
+
+      // Flat tail from the last point to the effective end (only when the last
+      // point is short of it).
+      if (rpts.back ().pos < effective_end)
+        push (
+          effective_end, rpts.back ().value, rpts.back ().opts,
+          rpts.back ().value, false);
+    }
+
+  // Note: no post-emit px patching or global sort. Both emission paths produce
+  // points_ already in ascending pixel order (the timeline via sequential loop
+  // legs; the editor via the explicit sort of its render-point list). A global
+  // sort here would be redundant and — being unstable — used to swap same-X leg
+  // boundaries, making degenerate wrap points draw flat (loop-cut bug).
 }
 
 void
@@ -178,6 +295,12 @@ AutomationClipCanvasRenderer::paint (QCanvasPainter * painter)
   sample_xs.push_back (points_.front ().px);
   sample_ys.push_back (points_.front ().py);
 
+  // Sample-index range [hover_lo, hover_hi] of the hovered source segment, if
+  // any (identity-matched against CachedControlPoint::source_ap).
+  bool   has_hover = false;
+  size_t hover_lo = 0;
+  size_t hover_hi = 0;
+
   for (size_t i = 0; i + 1 < points_.size (); ++i)
     {
       const auto &a = points_[i];
@@ -187,11 +310,13 @@ AutomationClipCanvasRenderer::paint (QCanvasPainter * painter)
       if (seg_px <= 0.0f)
         continue;
 
-      const float diff = b.val - a.val;
+      // Index of this segment's start point (already pushed as the last
+      // sample of the previous segment, or the initial point for i == 0).
+      const size_t seg_start_idx = sample_xs.size () - 1;
 
-      if (std::abs (diff) < 1e-5f)
+      if (std::abs (a.seg_value_b - a.seg_value_a) < 1e-5f)
         {
-          // Flat segment — single lineTo.
+          // Flat source segment — single lineTo to b.
           sample_xs.push_back (b.px);
           sample_ys.push_back (b.py);
         }
@@ -205,23 +330,36 @@ AutomationClipCanvasRenderer::paint (QCanvasPainter * painter)
         }
       else if (std::abs (a.curve_opts.curviness_) < 1e-4)
         {
-          // Linear segment — single lineTo.
+          // Linear segment — single lineTo (value at t_max == b.val by
+          // construction).
           sample_xs.push_back (b.px);
           sample_ys.push_back (b.py);
         }
       else
         {
-          // Curved segment — adaptive sampling at ~2 px granularity.
+          // Curved segment — adaptive sampling of the source segment over its
+          // t-subrange [seg_t_start, seg_t_max].
           const int steps = std::clamp (static_cast<int> (seg_px * 0.5f), 4, 64);
           for (int s = 1; s <= steps; ++s)
             {
-              const float t = static_cast<float> (s) / steps;
+              const float f = static_cast<float> (s) / steps;
+              const float t = a.seg_t_start + f * (a.seg_t_max - a.seg_t_start);
               const float val = dsp::evaluate_curve (
-                a.val, b.val, a.curve_opts.algo_,
+                a.seg_value_a, a.seg_value_b, a.curve_opts.algo_,
                 static_cast<float> (a.curve_opts.curviness_), t);
-              sample_xs.push_back (a.px + t * seg_px);
+              sample_xs.push_back (a.px + f * seg_px);
               sample_ys.push_back (canvas_height_ * (1.0f - val));
             }
+        }
+
+      // Highlight the single emitted segment the cursor is actually over. The
+      // hit-test (which gates hovered_x_ in QML) only succeeds on the real,
+      // draggable segment, so looped copies never match here.
+      if (hovered_x_ >= 0.0f && hovered_x_ >= a.px && hovered_x_ <= b.px)
+        {
+          hover_lo = seg_start_idx;
+          hover_hi = sample_xs.size () - 1;
+          has_hover = true;
         }
     }
 
@@ -255,20 +393,27 @@ AutomationClipCanvasRenderer::paint (QCanvasPainter * painter)
   painter->setStrokeStyle (curve_color_);
   painter->stroke ();
 
-  // ---- Center line (0.5 value) ----
-  QColor center_color = curve_color_;
-  center_color.setAlphaF (0.3f);
-  painter->setStrokeStyle (center_color);
-  painter->setLineWidth (1.0f);
-  painter->beginPath ();
-  painter->moveTo (0.0f, canvas_height_ * 0.5f);
-  painter->lineTo (canvas_width_, canvas_height_ * 0.5f);
-  painter->stroke ();
+  // ---- Hovered segment highlight ----
+  if (has_hover && hover_hi > hover_lo)
+    {
+      painter->beginPath ();
+      painter->moveTo (sample_xs[hover_lo], sample_ys[hover_lo]);
+      for (size_t i = hover_lo + 1; i <= hover_hi; ++i)
+        painter->lineTo (sample_xs[i], sample_ys[i]);
+      painter->setLineWidth (4.0f);
+      painter->setStrokeStyle (curve_color_.lighter (150));
+      painter->stroke ();
+    }
 
   // ---- Automation point circles ----
+  if (!draw_points_)
+    return;
+
   painter->setFillStyle (curve_color_);
   for (const auto &p : points_)
     {
+      if (!p.is_real_point)
+        continue;
       painter->beginPath ();
       painter->circle (p.px, p.py, 3.0f);
       painter->fill ();
