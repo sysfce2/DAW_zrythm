@@ -17,8 +17,8 @@ ApplicationWindow {
   property Arranger activeArranger: null
   required property AlertManager alertManager
   required property AppSettings appSettings
-  required property ControlRoom controlRoom
   required property ChordPresetManager chordPresetManager
+  required property ControlRoom controlRoom
   readonly property Action deleteAction: Action {
     id: deleteAction
 
@@ -29,19 +29,6 @@ ApplicationWindow {
     onTriggered: {
       if (root.activeArranger) {
         root.activeArranger.selectionOperator.deleteObjects();
-      }
-    }
-  }
-  readonly property Action toggleMuteAction: Action {
-    id: toggleMuteAction
-
-    enabled: root.activeArranger !== null
-    shortcut: "Shift+M"
-    text: qsTr("Toggle &Mute")
-
-    onTriggered: {
-      if (root.activeArranger) {
-        root.activeArranger.selectionOperator.toggleMute();
       }
     }
   }
@@ -58,6 +45,19 @@ ApplicationWindow {
   }
   readonly property Project project: session.project
   required property ProjectSession session
+  readonly property Action toggleMuteAction: Action {
+    id: toggleMuteAction
+
+    enabled: root.activeArranger !== null
+    shortcut: "Shift+M"
+    text: qsTr("Toggle &Mute")
+
+    onTriggered: {
+      if (root.activeArranger) {
+        root.activeArranger.selectionOperator.toggleMute();
+      }
+    }
+  }
 
   function closeAndDestroy() {
     console.log("Closing and destroying project window");
@@ -146,7 +146,6 @@ ApplicationWindow {
 
   AboutDialog {
     id: aboutDialog
-
   }
 
   ExportDialog {
@@ -219,22 +218,6 @@ ApplicationWindow {
     }
   }
 
-  Shortcut {
-    context: Qt.ApplicationShortcut
-    enabled: root.session.undoStack && root.session.undoStack.canUndo
-    sequences: [StandardKey.Undo]
-
-    onActivated: root.session.undoStack.undo()
-  }
-
-  Shortcut {
-    context: Qt.ApplicationShortcut
-    enabled: root.session.undoStack && root.session.undoStack.canRedo
-    sequences: [StandardKey.Redo]
-
-    onActivated: root.session.undoStack.redo()
-  }
-
   // Global spacebar for play/pause
   Shortcut {
     context: Qt.ApplicationShortcut
@@ -301,7 +284,6 @@ ApplicationWindow {
 
   LoadController {
     id: loadController
-
   }
 
   SaveController {

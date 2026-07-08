@@ -47,7 +47,23 @@ MenuBar {
     title: qsTr("&Edit")
 
     Action {
-      text: qsTr("Undo")
+      id: undoAction
+
+      enabled: root.session.undoStack && root.session.undoStack.canUndo
+      shortcut: StandardKey.Undo
+      text: enabled ? "%1: %2".arg(qsTr("Undo")).arg(root.session.undoStack.undoActions[0]) : qsTr("Undo")
+
+      onTriggered: root.session.undoStack.undo()
+    }
+
+    Action {
+      id: redoAction
+
+      enabled: root.session.undoStack && root.session.undoStack.canRedo
+      shortcut: StandardKey.Redo
+      text: enabled ? "%1: %2".arg(qsTr("Redo")).arg(root.session.undoStack.redoActions[0]) : qsTr("Redo")
+
+      onTriggered: root.session.undoStack.redo()
     }
   }
 
