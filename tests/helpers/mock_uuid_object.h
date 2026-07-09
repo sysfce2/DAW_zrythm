@@ -5,6 +5,8 @@
 
 #include "utils/uuid_identifiable.h"
 
+#include <QVariant>
+
 #include "helpers/mock_qobject.h"
 
 /// Mock UUID-identifiable QObject for testing.
