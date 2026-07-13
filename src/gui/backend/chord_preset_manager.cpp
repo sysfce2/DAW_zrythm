@@ -7,7 +7,6 @@
 #include "gui/backend/chord_preset_manager.h"
 #include "gui/backend/zrythm_application.h"
 #include "utils/directory_manager.h"
-#include "utils/gtest_wrapper.h"
 #include "utils/io_utils.h"
 #include "utils/qt.h"
 
@@ -528,9 +527,6 @@ ChordPresetManager::get_user_presets_path ()
 void
 ChordPresetManager::load_user_presets ()
 {
-  if (ZRYTHM_TESTING || ZRYTHM_BENCHMARKING)
-    return;
-
   const auto main_path = get_user_presets_path ();
   z_debug ("Reading user chord presets from {}...", main_path);
 

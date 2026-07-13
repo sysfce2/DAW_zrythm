@@ -6,7 +6,7 @@
 #include "structure/arrangement/clip.h"
 #include "structure/tracks/automation_track.h"
 
-#include <magic_enum.hpp>
+#include <magic_enum/magic_enum.hpp>
 
 namespace zrythm::structure::tracks
 {

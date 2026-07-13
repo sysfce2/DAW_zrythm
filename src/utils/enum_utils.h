@@ -11,8 +11,8 @@
 #  pragma warning(disable : 4458) // declaration hides class member
 #endif
 
-#include <magic_enum.hpp>
-#include <magic_enum_format.hpp>
+#include <magic_enum/magic_enum.hpp>
+#include <magic_enum/magic_enum_format.hpp>
 
 #if defined(__GNUC__) || defined(__clang__)
 #  pragma GCC diagnostic pop

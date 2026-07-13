@@ -8,6 +8,7 @@
 #include "structure/arrangement/chord_clip.h"
 #include "utils/app_settings.h"
 #include "utils/object_registry.h"
+#include "utils/qt.h"
 
 #include <QSignalSpy>
 
@@ -120,8 +121,8 @@ TEST_F (ChordRowListModelTest, GroupsEquivalentChords)
     model_->data (model_->index (0, 0), ChordRowListModel::ChordNameRole);
   const auto row1 =
     model_->data (model_->index (1, 0), ChordRowListModel::ChordNameRole);
-  EXPECT_EQ (row0.toString ().toStdString (), "CMaj");
-  EXPECT_EQ (row1.toString ().toStdString (), "Dmin");
+  EXPECT_EQ (utils::to_std_string (row0.toString ()), "CMaj");
+  EXPECT_EQ (utils::to_std_string (row1.toString ()), "Dmin");
 
   // The C Major row has 2 chord objects; D Minor has 1.
   EXPECT_EQ (

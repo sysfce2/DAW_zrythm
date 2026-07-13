@@ -22,7 +22,6 @@ target_sources(zrythm_utils_lib
     expandable_tick_range.cpp
     file_path_list.cpp
     float_ranges.cpp
-    gtest_wrapper.cpp
     hash.cpp
     io_utils.cpp
     logger.cpp
@@ -72,7 +71,6 @@ target_sources(zrythm_utils_lib
       format_boost.h
       format_juce.h
       format_qt.h
-      gtest_wrapper.h
       hash.h
       io_utils.h
       icloneable.h

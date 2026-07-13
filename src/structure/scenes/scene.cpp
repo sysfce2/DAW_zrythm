@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "structure/scenes/scene.h"
+#include "utils/qt.h"
 
 #include <nlohmann/json.hpp>
 
@@ -101,10 +102,11 @@ SceneList::moveScene (int fromIndex, int toIndex)
 void
 to_json (nlohmann::json &j, const Scene &scene)
 {
-  j[Scene::kNameKey] = scene.name_.toStdString ();
+  j[Scene::kNameKey] = zrythm::utils::to_std_string (scene.name_);
   if (scene.color_.isValid ())
     {
-      j[Scene::kColorKey] = scene.color_.name (QColor::HexRgb).toStdString ();
+      j[Scene::kColorKey] =
+        zrythm::utils::to_std_string (scene.color_.name (QColor::HexRgb));
     }
   j[Scene::kClipSlotsKey] = *scene.clip_slot_list_;
 }

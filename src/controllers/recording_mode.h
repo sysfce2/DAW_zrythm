@@ -6,7 +6,7 @@
 #include <cstdint>
 
 #include <QObject>
-#include <QtQmlIntegration/QtQmlIntegration>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 namespace zrythm::controllers::recording
 {

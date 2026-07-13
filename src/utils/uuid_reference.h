@@ -3,6 +3,7 @@
 #pragma once
 
 #include "utils/iobject_registry.h"
+#include "utils/qt.h"
 
 #include <QUuid>
 
@@ -107,7 +108,7 @@ public:
       {
         throw std::runtime_error (
           "UuidReference: object not found for id "
-          + id_->toString ().toStdString ());
+          + zrythm::utils::to_std_string (id_->toString ()));
       }
     return obj;
   }

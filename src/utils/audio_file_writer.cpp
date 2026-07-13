@@ -7,6 +7,7 @@
 
 #include "utils/audio_file_writer.h"
 #include "utils/logger.h"
+#include "utils/qt.h"
 #include "utils/utf8_string.h"
 
 #include <QtConcurrentRun>
@@ -53,19 +54,17 @@ AudioFileWriter::write (
         }
       else
         {
-          throw std::runtime_error (
+          throw std::runtime_error (to_std_string (
             QObject::tr ("Unsupported audio format: %1")
-              .arg (file_extension.toStdString ())
-              .toStdString ());
+              .arg (file_extension.toStdString ())));
         }
 
       // Create parent directories if needed
       if (!file_juce.getParentDirectory ().createDirectory ())
         {
-          throw std::runtime_error (
+          throw std::runtime_error (to_std_string (
             QObject::tr ("Failed to create parent directories for %1")
-              .arg (file_path.string ())
-              .toStdString ());
+              .arg (file_path.string ())));
         }
 
       // Create output stream
@@ -74,10 +73,9 @@ AudioFileWriter::write (
       if (
         !dynamic_cast<juce::FileOutputStream &> (*file_output_stream).openedOk ())
         {
-          throw std::runtime_error (
+          throw std::runtime_error (to_std_string (
             QObject::tr ("Failed to open output file: %1")
-              .arg (file_path.string ())
-              .toStdString ());
+              .arg (file_path.string ())));
         }
 
       // Create writer
@@ -85,10 +83,9 @@ AudioFileWriter::write (
         format->createWriterFor (file_output_stream, options.writer_options_);
       if (writer == nullptr)
         {
-          throw std::runtime_error (
+          throw std::runtime_error (to_std_string (
             QObject::tr ("Failed to create audio writer for %1")
-              .arg (file_path.string ())
-              .toStdString ());
+              .arg (file_path.string ())));
         }
 
       const auto total_samples = buffer.getNumSamples ();
@@ -116,10 +113,9 @@ AudioFileWriter::write (
           if (!writer->writeFromAudioSampleBuffer (
                 buffer, samples_written, samples_to_write))
             {
-              throw std::runtime_error (
+              throw std::runtime_error (to_std_string (
                 QObject::tr ("Failed to write audio data to %1")
-                  .arg (file_path.string ())
-                  .toStdString ());
+                  .arg (file_path.string ())));
             }
 
           samples_written += samples_to_write;

@@ -6,6 +6,7 @@
 #include "actions/track_collection_operator.h"
 #include "commands/delete_tracks_command.h"
 #include "commands/move_tracks_command.h"
+#include "utils/qt.h"
 
 #include <fmt/format.h>
 
@@ -83,7 +84,7 @@ TrackCollectionOperator::deleteTracks (
           throw std::invalid_argument (
             fmt::format (
               "Cannot delete non-deletable track: {}",
-              track->name ().toStdString ()));
+              zrythm::utils::to_std_string (track->name ())));
         }
       track_refs.emplace_back (track->get_uuid (), registry);
     }

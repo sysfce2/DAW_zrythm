@@ -11,6 +11,7 @@
 #include "utils/directory_manager.h"
 #include "utils/format.h"
 #include "utils/io_utils.h"
+#include "utils/qt.h"
 #include "utils/utf8_string.h"
 
 #include <QDateTime>
@@ -87,7 +88,7 @@ PluginConfigurationManager::read_or_new ()
   std::string json;
   try
     {
-      json = utils::io::read_file_contents (path).toStdString ();
+      json = zrythm::utils::to_std_string (utils::io::read_file_contents (path));
     }
   catch (const ZrythmException &e)
     {

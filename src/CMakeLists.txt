@@ -64,6 +64,7 @@ set_target_properties(zrythm_gui_lib PROPERTIES
   OUTPUT_NAME zrythm_gui_lib
   UNITY_BUILD ${ZRYTHM_UNITY_BUILD}
 )
+target_compile_definitions(zrythm_gui_lib PRIVATE $<$<BOOL:${ZRYTHM_DEBUG_QML}>:QT_QML_DEBUG>)
 target_link_libraries(zrythm_gui_lib
   PUBLIC
     zrythm_actions_lib

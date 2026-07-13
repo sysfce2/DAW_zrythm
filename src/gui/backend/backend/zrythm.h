@@ -11,7 +11,8 @@
 #include "utils/utf8_string.h"
 #include "utils/version.h"
 
-#include <QtQmlIntegration/QtQmlIntegration>
+#include <QObject>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 #include <juce_core/juce_core.h>
 

@@ -14,11 +14,20 @@ configure_file(
 
 set(target_manpage_path "${CMAKE_CURRENT_BINARY_DIR}/zrythm.1")
 
+set(_san_env "")
+if(ZRYTHM_ENABLE_SANITIZER_THREAD)
+  set(_san_env ${CMAKE_COMMAND} -E env
+    "TSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tools/tsan_suppressions.supp")
+elseif(ZRYTHM_ENABLE_SANITIZER_ADDRESS)
+  set(_san_env ${CMAKE_COMMAND} -E env
+    "ASAN_OPTIONS=alloc_dealloc_mismatch=0")
+endif()
+
 add_custom_command(
   OUTPUT ${target_manpage_path}
-  COMMAND $<TARGET_FILE:zrythm> --version
-  COMMAND $<TARGET_FILE:zrythm> --help
-  COMMAND ${HELP2MAN_EXECUTABLE}
+  COMMAND ${_san_env} $<TARGET_FILE:zrythm> --version
+  COMMAND ${_san_env} $<TARGET_FILE:zrythm> --help
+  COMMAND ${_san_env} ${HELP2MAN_EXECUTABLE}
     -s 1 -N
     -i ${CMAKE_CURRENT_BINARY_DIR}/zrythm.h2m
     -o ${target_manpage_path}

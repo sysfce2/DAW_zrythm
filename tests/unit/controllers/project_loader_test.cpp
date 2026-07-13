@@ -6,6 +6,7 @@
 #include "project_json_serializer_test.h"
 #include "structure/project/project_path_provider.h"
 #include "utils/audio.h"
+#include "utils/qt.h"
 #include "utils/registry_utils.h"
 
 #include "helpers/qt_helpers.h"
@@ -202,7 +203,8 @@ TEST_F (ProjectLoaderTest, RoundtripWithAudioFiles)
   auto clip_path =
     pool_path
     / fmt::format (
-      "{}.wav", clip_id.value_.toString (QUuid::WithoutBraces).toStdString ());
+      "{}.wav",
+      utils::to_std_string (clip_id.value_.toString (QUuid::WithoutBraces)));
   EXPECT_TRUE (utils::io::path_exists (clip_path))
     << "Audio file should exist at: " << clip_path;
 

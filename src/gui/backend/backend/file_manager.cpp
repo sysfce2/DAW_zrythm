@@ -25,7 +25,6 @@
 #include "gui/backend/backend/file_manager.h"
 #include "gui/backend/backend/zrythm.h"
 #include "gui/backend/io/file_descriptor.h"
-#include "utils/gtest_wrapper.h"
 #include "utils/io_utils.h"
 #include "utils/types.h"
 
@@ -139,33 +138,32 @@ FileManager::FileManager (utils::AppSettings &app_settings)
   g_object_unref (vol_monitor);
 #endif
 
-  if (ZRYTHM_HAVE_UI && !ZRYTHM_TESTING)
+  {
+    /* add bookmarks */
     {
-      /* add bookmarks */
-      {
-        z_debug ("adding bookmarks...");
-        auto bookmarks = app_settings_.fileBrowserBookmarks ();
-        for (const auto &bookmark : bookmarks)
-          {
-            auto basename = QFileInfo (bookmark).baseName ();
-            locations.emplace_back (
-              basename, QFileInfo (bookmark).filesystemAbsoluteFilePath (),
-              FileManagerSpecialLocation::FILE_MANAGER_NONE);
-          }
-      }
-
-      /* set remembered location */
-      FileBrowserLocation loc;
-      auto last_location = app_settings_.fileBrowserLastLocation ();
-      if (!last_location.isEmpty ())
+      z_debug ("adding bookmarks...");
+      auto bookmarks = app_settings_.fileBrowserBookmarks ();
+      for (const auto &bookmark : bookmarks)
         {
-          loc.path_ = QFileInfo (last_location).filesystemAbsoluteFilePath ();
-          if (!loc.path_.empty () && fs::is_directory (loc.path_))
-            {
-              set_selection (loc, true, false);
-            }
+          auto basename = QFileInfo (bookmark).baseName ();
+          locations.emplace_back (
+            basename, QFileInfo (bookmark).filesystemAbsoluteFilePath (),
+            FileManagerSpecialLocation::FILE_MANAGER_NONE);
         }
     }
+
+    /* set remembered location */
+    FileBrowserLocation loc;
+    auto last_location = app_settings_.fileBrowserLastLocation ();
+    if (!last_location.isEmpty ())
+      {
+        loc.path_ = QFileInfo (last_location).filesystemAbsoluteFilePath ();
+        if (!loc.path_.empty () && fs::is_directory (loc.path_))
+          {
+            set_selection (loc, true, false);
+          }
+      }
+  }
 }
 
 void

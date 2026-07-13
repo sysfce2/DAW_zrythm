@@ -22,7 +22,7 @@ using namespace std::string_view_literals;
 inline void
 to_json (nlohmann::json &j, const QString &s)
 {
-  j = s.toStdString ();
+  j = zrythm::utils::to_std_string (s);
 }
 inline void
 from_json (const nlohmann::json &j, QString &s)

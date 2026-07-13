@@ -10,6 +10,7 @@ set_target_properties(zrythm_utils_benchmarks PROPERTIES
 )
 
 target_link_libraries(zrythm_utils_benchmarks PRIVATE
-  zrythm::benchmark
+  benchmark::benchmark_main
+  GTest::gmock
   zrythm_utils_lib
 )

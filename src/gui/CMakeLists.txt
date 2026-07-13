@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2024-2025 Alexandros Theodotou <alex@zrythm.org>
+# SPDX-FileCopyrightText: © 2024-2026 Alexandros Theodotou <alex@zrythm.org>
 # SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 # =============================================================================
@@ -357,7 +357,6 @@ qt_add_qml_module(zrythm_qml_lib
   RESOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/resources/qtquickcontrols2.conf
     ${icon_files}
-    ${font_files}
     ${wav_files}
     ${license_files}
 
@@ -390,3 +389,11 @@ qt_add_qml_module(zrythm
   IMPORTS
     TARGET zrythm_qml_lib
 )
+
+# Add each font as a separate resource to avoid MSVC C1060.
+foreach(_font ${font_files})
+  qt_target_qml_sources(zrythm_qml_lib
+    RESOURCES ${_font}
+    PREFIX "/qt/qml/Zrythm"
+  )
+endforeach()

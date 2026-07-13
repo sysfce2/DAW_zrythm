@@ -25,7 +25,7 @@ find_package(Doxygen)
 find_program(DOT_EXECUTABLE dot)
 
 if(DOXYGEN_FOUND AND DOT_EXECUTABLE)
-  add_custom_target(doxygen-docs
+  add_custom_target(doxygen-docs EXCLUDE_FROM_ALL
     COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile.cfg
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Generating developer documentation with Doxygen"

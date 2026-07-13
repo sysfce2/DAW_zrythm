@@ -14,6 +14,7 @@
 #include "utils/directory_manager.h"
 #include "utils/format_juce.h"
 #include "utils/qsettings_backend.h"
+#include "utils/qt.h"
 #include "utils/thread_safe_fftw.h"
 #include "utils/tracy.h"
 
@@ -541,7 +542,7 @@ ZrythmApplication::onEngineOutput ()
   QByteArray output = impl_->engine_process_->readAllStandardOutput ();
   z_info (
     "\n[ === Engine output === ]\n{}\n[ === End engine output === ]",
-    output.toStdString ());
+    zrythm::utils::to_std_string (output));
 }
 
 void

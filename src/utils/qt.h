@@ -3,10 +3,38 @@
 
 #pragma once
 
+#include <cstddef>
+#include <string>
+
+#include <QByteArray>
 #include <QPointer>
+#include <QString>
 
 namespace zrythm::utils
 {
+
+/**
+ * @brief Constructs a `std::string` copy of @p ba's bytes.
+ *
+ * @return A UTF-8 `std::string` allocated by the caller's C++ runtime
+ *         (not Qt's), so allocation and deallocation always pair in the
+ *         same binary even when Qt is built with a statically-linked C++
+ *         runtime that defines its own `operator new`.
+ */
+inline std::string
+to_std_string (const QByteArray &ba)
+{
+  return { ba.constData (), static_cast<std::size_t> (ba.size ()) };
+}
+
+/**
+ * @brief Convenience overload for `QString` (UTF-8 encoded).
+ */
+inline std::string
+to_std_string (const QString &s)
+{
+  return to_std_string (s.toUtf8 ());
+}
 
 /**
  * @brief Helper that checks if 2 values are equal.

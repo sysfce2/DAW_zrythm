@@ -61,9 +61,9 @@ public:
   }
   static Utf8String from_qstring (const QString &str)
   {
-    Utf8String ret;
-    ret.str_ = str.toUtf8 ().toStdString ();
-    return ret;
+    const QByteArray utf8 = str.toUtf8 ();
+    return from_utf8_encoded_string (
+      { utf8.constData (), static_cast<std::size_t> (utf8.size ()) });
   }
   static Utf8String from_qurl (const QUrl &url)
   {

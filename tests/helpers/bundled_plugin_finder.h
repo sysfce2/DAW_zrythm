@@ -5,6 +5,7 @@
 
 #include "plugins/CLAPPluginFormat.h"
 #include "utils/file_path_list.h"
+#include "utils/qt.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -27,7 +28,7 @@ find_bundled_plugin_by_name (
   auto        paths = std::make_unique<utils::FilePathList> ();
   QStringList path_list = search_paths_str.split (":::", Qt::SkipEmptyParts);
   for (const auto &path : path_list)
-    paths->add_path (std::filesystem::path (path.toStdString ()));
+    paths->add_path (std::filesystem::path (utils::to_std_string (path)));
 
   if (paths->empty ())
     return nullptr;

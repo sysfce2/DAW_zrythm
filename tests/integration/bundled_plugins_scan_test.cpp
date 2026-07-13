@@ -7,6 +7,7 @@
 #include "plugins/plugin_scan_manager.h"
 #include "utils/file_path_list.h"
 #include "utils/logger.h"
+#include "utils/qt.h"
 
 #include <QSignalSpy>
 #include <QStringList>
@@ -60,7 +61,7 @@ protected:
     QStringList path_list = paths_str.split (":::", Qt::SkipEmptyParts);
     for (const auto &path : path_list)
       {
-        paths->add_path (std::filesystem::path (path.toStdString ()));
+        paths->add_path (std::filesystem::path (utils::to_std_string (path)));
       }
     return paths;
   }

@@ -4,6 +4,7 @@
 #include "controllers/project_saver.h"
 #include "project_json_serializer_test.h"
 #include "structure/project/project_path_provider.h"
+#include "utils/qt.h"
 
 #include "helpers/qt_helpers.h"
 
@@ -182,8 +183,8 @@ TEST_F (ProjectSaverTest, SaveCreatesProjectFile)
 
   // Verify the result is the path
   EXPECT_EQ (
-    result.toStdString (),
-    utils::Utf8String::from_path (save_dir).to_qstring ().toStdString ());
+    utils::to_std_string (result),
+    utils::Utf8String::from_path (save_dir).str ());
 
   // Verify project file was created
   auto project_file_path =
@@ -226,8 +227,8 @@ TEST_F (ProjectSaverTest, SaveReturnsProjectPath)
 
   // The result should be the path
   EXPECT_EQ (
-    result.toStdString (),
-    utils::Utf8String::from_path (save_dir).to_qstring ().toStdString ());
+    utils::to_std_string (result),
+    utils::Utf8String::from_path (save_dir).str ());
 }
 
 TEST_F (ProjectSaverTest, SaveTwiceToSameDirectory)

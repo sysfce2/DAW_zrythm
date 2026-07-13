@@ -186,6 +186,10 @@ node_modules
 
 # CMake
 CMakeLists.txt.user
+CMakeUserPresets.json
+
+# Conan
+conanbuild/
 
 # PlantUML
 out

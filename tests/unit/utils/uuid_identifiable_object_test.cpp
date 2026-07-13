@@ -4,6 +4,7 @@
 #include "utils/format_qt.h"
 
 #include "utils/format_boost.h"
+#include "utils/qt.h"
 #include "utils/uuid_identifiable_object.h"
 
 #include "./test_uuid_identifiable_qobjects.h"
@@ -70,6 +71,6 @@ TEST (UuidIdentifiableObjectTest, UuidTypeFormatter)
   std::string uuidStr = fmt::format ("{}", uuid);
   EXPECT_EQ (
     uuidStr,
-    type_safe::get (uuid).toString (QUuid::WithoutBraces).toStdString ());
+    utils::to_std_string (type_safe::get (uuid).toString (QUuid::WithoutBraces)));
 }
 } // namespace

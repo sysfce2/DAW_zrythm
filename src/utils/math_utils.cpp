@@ -21,7 +21,7 @@ calculate_rms_amp (const float * buf, const uint32_t nframes)
       sample = buf[i];
       sum += (sample * sample);
     }
-  return std::sqrtf (sum / ((float) nframes / (float) RMS_FRAMES));
+  return std::sqrt (sum / ((float) nframes / (float) RMS_FRAMES));
 }
 
 /**

@@ -48,6 +48,7 @@
 #include "utils/concurrency.h"
 #include "utils/io_utils.h"
 #include "utils/logger.h"
+#include "utils/qt.h"
 #include "utils/raii_utils.h"
 #include "utils/registry_utils.h"
 #include "utils/serialization.h"
@@ -1803,7 +1804,7 @@ std::string
 ClapPlugin::save_state_impl () const
 {
   auto data = save_state_to_byte_array ();
-  return data.toBase64 ().toStdString ();
+  return zrythm::utils::to_std_string (data.toBase64 ());
 }
 
 void

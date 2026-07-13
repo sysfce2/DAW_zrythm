@@ -15,10 +15,14 @@ function(zrythm_discover_tests TARGET_NAME)
     QT_SKIP_DEFAULT_TESTCASE_DIRS TRUE
   )
   # see https://discourse.cmake.org/t/googletest-crash-when-using-cmake-xcode-arm64/5766/11
-  if(XCODE)
+  # Ad-hoc signing is required on Apple Silicon to run freshly-built test
+  # binaries (gtest_discover_tests executes them at build time). The Xcode
+  # generator doesn't auto-sign, and even Ninja builds benefit from a clean
+  # re-sign after linking against conan-provided dylibs.
+  if(APPLE)
     add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
       COMMAND codesign -f -s - "$<TARGET_FILE:${TARGET_NAME}>"
-      COMMENT "Signing ${TARGET_NAME} for Xcode POST_BUILD"
+      COMMENT "Ad-hoc signing ${TARGET_NAME} POST_BUILD"
     )
   endif()
 
@@ -26,8 +30,10 @@ function(zrythm_discover_tests TARGET_NAME)
     gtest_add_tests(TARGET ${TARGET_NAME})
   else()
     gtest_discover_tests(${TARGET_NAME}
-      # Default of 5s is too short on mac
-      DISCOVERY_TIMEOUT 10
+      # Default of 5s is too short on mac; the QML test binary pulls in the
+      # largest Qt dylibs (Quick/Qml) whose cold-start (dyld load + signature
+      # validation) can exceed 10s on a loaded macOS runner.
+      DISCOVERY_TIMEOUT 60
       XML_OUTPUT_DIR "${CMAKE_BINARY_DIR}/test_results"
     )
   endif()
@@ -54,7 +60,7 @@ target_sources(zrythm_test_helpers_lib
 )
 target_link_libraries(zrythm_test_helpers_lib
   PUBLIC
-    zrythm::gtest_for_tests
+    GTest::gmock_main
     zrythm::include_dirs
     ${zrythm_link_libs}
     zrythm::all_compile_options
