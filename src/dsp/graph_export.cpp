@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include "dsp/graph_export.h"
+#include "utils/qt.h"
 
 #include <QObject>
 #include <QString>
@@ -33,7 +34,7 @@ GraphExport::export_to_dot (const graph::Graph &graph, bool include_class_names)
               auto   &qobj = dynamic_cast<QObject &> (node->get_processable ());
               QString className =
                 QString (qobj.metaObject ()->className ()).section ("::", -1);
-              ss << "\\n(" << className.toStdString () << ")";
+              ss << "\\n(" << zrythm::utils::to_std_string (className) << ")";
             }
           catch (const std::bad_cast &)
             {

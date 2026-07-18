@@ -4,7 +4,7 @@
 #pragma once
 
 #include <QObject>
-#include <QtQmlIntegration/QtQmlIntegration>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 /**
  * @brief Controller for actions.

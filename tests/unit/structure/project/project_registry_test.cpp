@@ -9,6 +9,7 @@
 #include "dsp/port.h"
 #include "structure/project/project_registry.h"
 #include "utils/object_registry.h"
+#include "utils/qt.h"
 #include "utils/registry_utils.h"
 #include "utils/serialization.h"
 
@@ -268,7 +269,7 @@ TEST_F (ProjectRegistryTest, ForEachParamIteratesOnlyParams)
   int count = 0;
   registry_->for_each_matching<dsp::ProcessorParameter> (
     [&] (dsp::ProcessorParameter &p) {
-      EXPECT_EQ (p.label ().toStdString (), "param");
+      EXPECT_EQ (utils::to_std_string (p.label ()), "param");
       count++;
     });
   EXPECT_EQ (count, 1);

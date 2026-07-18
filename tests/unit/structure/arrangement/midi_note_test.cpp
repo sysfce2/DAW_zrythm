@@ -6,6 +6,7 @@
 #include "dsp/tempo_map.h"
 #include "dsp/tempo_map_qml_adapter.h"
 #include "structure/arrangement/midi_note.h"
+#include "utils/qt.h"
 
 #include <QSignalSpy>
 
@@ -146,21 +147,21 @@ TEST_F (MidiNoteTest, MidiChannelProperty)
 TEST_F (MidiNoteTest, PitchAsRichText)
 {
   // Test C4 (default)
-  EXPECT_EQ (note->pitchAsRichText ().toStdString (), "C<sup>4</sup>");
+  EXPECT_EQ (utils::to_std_string (note->pitchAsRichText ()), "C<sup>4</sup>");
 
   // Test other notes
   note->setPitch (61); // C#4
-  EXPECT_EQ (note->pitchAsRichText ().toStdString (), "D♭<sup>4</sup>");
+  EXPECT_EQ (utils::to_std_string (note->pitchAsRichText ()), "D♭<sup>4</sup>");
 
   note->setPitch (72); // C5
-  EXPECT_EQ (note->pitchAsRichText ().toStdString (), "C<sup>5</sup>");
+  EXPECT_EQ (utils::to_std_string (note->pitchAsRichText ()), "C<sup>5</sup>");
 
   // Test boundary cases
   note->setPitch (0); // C-1
-  EXPECT_EQ (note->pitchAsRichText ().toStdString (), "C<sup>-1</sup>");
+  EXPECT_EQ (utils::to_std_string (note->pitchAsRichText ()), "C<sup>-1</sup>");
 
   note->setPitch (127); // G9
-  EXPECT_EQ (note->pitchAsRichText ().toStdString (), "G<sup>9</sup>");
+  EXPECT_EQ (utils::to_std_string (note->pitchAsRichText ()), "G<sup>9</sup>");
 }
 
 // Test pitch_to_string static method

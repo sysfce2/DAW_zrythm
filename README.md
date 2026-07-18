@@ -117,6 +117,57 @@ You can change `Release` to `Debug` below if you want to build in debug mode.
 > [!NOTE]
 > On Windows, you must build Qt with the same compiler and same configuration (Debug/Release) you use to build Zrythm.
 
+#### Using Conan (optional)
+
+[Conan](https://conan.io/) can manage all dependencies (including Qt) for reproducible builds across platforms.
+
+1. Install Conan, CMake, and Ninja in a virtual environment:
+   ```
+   python -m venv venv && source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. Install project profiles and settings:
+   ```
+   conan config install conan
+   ```
+
+   > [!WARNING]
+   > This overwrites all files in `~/.conan2/profiles/`, as well as `~/.conan2/settings_user.yml` and `~/.conan2/global.conf`. To avoid conflicts, either back up existing configs or use a separate Conan home via `CONAN_HOME`.
+
+3. Initialize submodules (includes the custom Qt recipe fork) and export:
+   ```
+   git submodule update --init --recursive
+   conan remote add conan-local-index ext/conan-center-index
+   python3 tools/export_conan_recipes.py
+   ```
+
+4. Install dependencies and generate build files:
+   ```
+   conan install . -pr:h <profile> -pr:b <profile> --build=missing
+   cmake --preset default
+   cmake --build conanbuild/<Debug|Release> --config <Debug|Release>
+   ```
+
+   Select a profile for your platform (adjust compiler versions in `~/.conan2/profiles/_clang`, `_gcc`, `_msvc`, or `_apple_clang` to match your toolchain):
+
+   | Platform | Host/build profile | Build profile (cross-compile) |
+   |----------|-------------------|-------------------------------|
+   | GNU/Linux (Clang) | `clang_debug` / `clang_release` | — |
+   | GNU/Linux (GCC) | `gcc_debug` / `gcc_release` | — |
+   | macOS | `appleclang_debug` / `appleclang_release` | `appleclang_build` |
+   | Windows | `msvc_debug` / `msvc_release` | — |
+
+   > [!NOTE]
+   > macOS uses `appleclang_build` (Release) as the build profile because the host profile builds sanitizer-instrumented Qt, which requires cross-building (sanitizer profiles set `cross_build=True` to skip running test executables that would otherwise fail under the sanitizer runtime).
+
+   For sanitizer builds, use profiles like `clang_asan_ubsan`, `clang_tsan`, `gcc_asan_ubsan`, `appleclang_asan_ubsan`, or `msvc_asan`. These instrument the entire dependency chain.
+
+   For instrumenting only Zrythm itself (without rebuilding dependencies), use the `sanitizer` option instead. Per the [Conan sanitizer docs](https://docs.conan.io/2/security/sanitizers.html), most sanitizers (ASan, UBSan) do not require the whole chain to be built with them:
+   ```
+   conan install . -pr:h clang_debug -pr:b clang_debug -o sanitizer="address_undefined" --build=missing
+   ```
+
 ## Using Zrythm
 
 See the [user manual](http://manual.zrythm.org/).

@@ -5,6 +5,7 @@
 #include "dsp/port.h"
 #include "dsp/port_connection.h"
 #include "utils/object_registry.h"
+#include "utils/qt.h"
 #include "utils/registry_utils.h"
 #include "utils/serialization.h"
 
@@ -75,7 +76,7 @@ TEST_F (ModulatorMacroProcessorTest, BasicConstruction)
   EXPECT_EQ (macro_processor->get_name ().view (), "Macro 1");
   EXPECT_EQ (cv_in->get_label ().view (), "Macro 1 CV In");
   EXPECT_EQ (cv_out->get_label ().view (), "Macro 1 CV Out");
-  EXPECT_EQ (macro_param->label ().toStdString (), "Macro 1");
+  EXPECT_EQ (utils::to_std_string (macro_param->label ()), "Macro 1");
 }
 
 TEST_F (ModulatorMacroProcessorTest, ProcessBlockNoInput)
@@ -207,7 +208,7 @@ TEST_F (ModulatorMacroProcessorTest, SerializationRoundTrip)
   EXPECT_EQ (
     new_processor.get_cv_in_port ().get_label ().view (), "Macro 1 CV In");
   EXPECT_EQ (
-    new_processor.get_macro_param ().label ().toStdString (), "Macro 1");
+    utils::to_std_string (new_processor.get_macro_param ().label ()), "Macro 1");
 }
 
 TEST_F (ModulatorMacroProcessorTest, PortDesignationProvider)

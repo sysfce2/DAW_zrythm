@@ -5,6 +5,7 @@
 
 #include "utils/exceptions.h"
 #include "utils/io_utils.h"
+#include "utils/qt.h"
 
 #include <gtest/gtest.h>
 
@@ -274,7 +275,7 @@ TEST (IoTest, MoveFile)
 
     // Destination should have original content
     auto read_data = utils::io::read_file_contents (dest_file);
-    EXPECT_EQ (read_data.toStdString (), "dest content");
+    EXPECT_EQ (utils::to_std_string (read_data), "dest content");
   }
 
   // Test moving to existing destination with force (should succeed)

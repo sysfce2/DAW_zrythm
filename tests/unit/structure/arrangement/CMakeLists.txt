@@ -39,7 +39,7 @@ set_target_properties(zrythm_structure_arrangement_unit_tests PROPERTIES
 )
 
 target_link_libraries(zrythm_structure_arrangement_unit_tests PRIVATE
-  zrythm::gtest_for_tests
+  GTest::gmock_main
   zrythm_arrangement_lib
   zrythm_test_helpers_lib
 )

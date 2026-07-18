@@ -16,18 +16,6 @@ workflow:
     # run tag pipelines
     - if: $CI_COMMIT_TAG
 
-variables:
-  COMMON_CMAKE_OPTIONS: >-
-    -DZRYTHM_STRICT=ON
-    -DZRYTHM_TESTS=ON
-    -DZRYTHM_QML_TESTS=ON
-    -DZRYTHM_BENCHMARKS=ON
-    -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER
-    -DCPM_DOWNLOAD_ALL=ON
-    -DZRYTHM_WITH_BUNDLED_THIRD_PARTY_ATTRIBUTIONS=ON
-    -DZRYTHM_VERIFY_INTERFACE_HEADER_SETS=ON
-    -DZRYTHM_BUILD_WITH_PIPE=ON
-
 stages:
   - setup
   - check
@@ -35,7 +23,12 @@ stages:
   - deploy
 
 .unix-activate-venv: &unix-activate-venv
+  - python3 -m venv venv
   - source ./venv/bin/activate
+  - python3 -m pip install -r requirements.txt
+  - conan config install conan
+  - conan remote list | grep -q conan-local-index || conan remote add conan-local-index ext/conan-center-index
+  - python3 tools/export_conan_recipes.py
   - export CPM_SOURCE_CACHE="${HOME}/.cache/CPM"
 
 .ssh-setup: &ssh-setup
@@ -66,48 +59,39 @@ stages:
 
 .gnu-linux-template:
   tags:
-    - ubuntu20
+    - ubuntu22
   variables:
-    BUILDDIR: "build_gnu_linux"
     QT_QPA_PLATFORM: "offscreen"
-    INSTALLED_QT_PREFIX: "/opt/Qt-6.11.0/Release"
     GIT_SUBMODULE_STRATEGY: recursive
   before_script:
     - *unix-activate-venv
 
 .sanitizer-template:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: check
   needs: []
   variables:
-    BUILDDIR: "build_sanitizer"
-    SANITIZER_TYPE: "address" # Default sanitizer
+    HOST_PROFILE: "clang_debug"
+    SANITIZER_OPTION: "address_undefined"
     RTSAN_OPTIONS: "suppressions=$CI_PROJECT_DIR/tools/rtsan_suppressions.supp"
     WITH_BUNDLED_PLUGINS: "ON"
   before_script:
     - *unix-activate-venv
   script:
+    - conan install . -pr:h ${HOST_PROFILE} -pr:b gcc_release -o sanitizer="${SANITIZER_OPTION}" --build=missing --lockfile=conan.lock
+    - cmake --preset default -DZRYTHM_UNITY_BUILD=OFF -DZRYTHM_BUNDLED_PLUGINS=${WITH_BUNDLED_PLUGINS}
+    - cmake --build conanbuild/Debug --parallel
+    - source conanbuild/Debug/generators/conanrun.sh && ctest --test-dir conanbuild/Debug --rerun-failed --output-on-failure
     - >-
-      cmake -B ${BUILDDIR}-${SANITIZER_TYPE} ${COMMON_CMAKE_OPTIONS}
-      -G "Ninja"
-      -DCMAKE_C_COMPILER=clang
-      -DCMAKE_CXX_COMPILER=clang++
-      -DCMAKE_PREFIX_PATH=${INSTALLED_QT_PREFIX}
-      -DCMAKE_BUILD_TYPE=Debug
-      -DZRYTHM_ENABLE_SANITIZER_${SANITIZER_TYPE}=ON
-      -DZRYTHM_TESTS=ON
-      -DZRYTHM_UNITY_BUILD=OFF
-      -DZRYTHM_BUNDLED_PLUGINS=${WITH_BUNDLED_PLUGINS}
-    - cmake --build ${BUILDDIR}-${SANITIZER_TYPE} --parallel
-    - ctest --test-dir ${BUILDDIR}-${SANITIZER_TYPE} --rerun-failed --output-on-failure
+      if [ "${CREATE_APPIMAGE}" = "ON" ]; then
+        APPIMAGE_EXTRACT_AND_RUN=1 cpack -G AppImage -C Debug --config conanbuild/Debug/CPackConfig.cmake -B package-${SANITIZER_OPTION}-debug;
+      fi
 
 .mac-arm-template:
   tags:
     - mac-arm
   variables:
-    BUILDDIR: "build_mac_arm"
+    GIT_SUBMODULE_STRATEGY: recursive
   before_script:
     - *unix-activate-venv
 
@@ -115,7 +99,7 @@ stages:
   tags:
     - windows11
   variables:
-    BUILDDIR: "build_windows"
+    GIT_SUBMODULE_STRATEGY: recursive
     INSTALLDIR: "install_windows"
     VSLANG: "1033"
     # use /MP1 to disable parallel builds if the compiler messages are hard to read
@@ -127,177 +111,129 @@ stages:
     - *windows-enable-vs-env
     - *windows-activate-venv
 
+# Windows template with full environment setup (venv, conan, recipes).
+# Use for jobs that don't depend on configure:windows artifacts.
+.windows-with-conan:
+  extends: .windows-template
+  before_script:
+    - *windows-enable-vs-env
+    - python -m venv venv
+    - *windows-activate-venv
+    - python -m pip install -r requirements.txt
+    - conan config install conan
+    - $r = conan remote list 2>$null; if (-not ($r -match 'conan-local-index')) { conan remote add conan-local-index ext/conan-center-index }
+    - python tools/export_conan_recipes.py
+
 default:
   cache:
     # this number must be bumped every time these subprojects are updated
-    - key: cache-33-$CI_RUNNER_DESCRIPTION
+    - key: cache-34-$CI_RUNNER_DESCRIPTION
       paths:
         - venv
-        - "${BUILDDIR}*/_deps/*-src"
+        - .cache/CPM
 
-# (see build-aux/Dockerfile for Qt build flags)
 configure:gnu/linux:
   extends: .gnu-linux-template
   stage: setup
   variables:
     GIT_DEPTH: 0 # Fetch full history
   before_script:
-    - python3 -m venv venv
     - *unix-activate-venv
-    # - python3 -m pip install -r requirements.txt
   script:
+    - conan install . -pr:h ${HOST_PROFILE} -pr:b gcc_release --build=missing --lockfile=conan.lock
     - >-
-      cmake -B ${BUILDDIR}-${BUILD_TYPE} ${COMMON_CMAKE_OPTIONS}
-      -G "Ninja"
-      -DCMAKE_C_COMPILER=gcc
-      -DCMAKE_CXX_COMPILER=g++
-      -DCMAKE_PREFIX_PATH=${INSTALLED_QT_PREFIX}
-      -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+      cmake --preset default
       -DZRYTHM_USER_MANUAL=OFF
       -DZRYTHM_WITH_LIBDW=OFF
       -DZRYTHM_UNITY_BUILD=ON
       $(if [ "${BUILD_TYPE}" = "Debug" ]; then echo "-DZRYTHM_COVERAGE=ON"; fi)
-      -DZRYTHM_GCC_X86_64_V3_OPTIMIZATIONS=ON
   parallel:
     matrix:
-      - BUILD_TYPE: [Debug, Release]
+      - BUILD_TYPE: Debug
+        HOST_PROFILE: gcc_debug
+      - BUILD_TYPE: Release
+        HOST_PROFILE: gcc_release
   artifacts:
     paths:
-      - ${BUILDDIR}-${BUILD_TYPE}
+      - conanbuild/${BUILD_TYPE}
     exclude:
-      - ${BUILDDIR}-${BUILD_TYPE}/**/.git/**/*
+      - conanbuild/${BUILD_TYPE}/**/.git/**/*
     expire_in: 1 day
 
 configure-for-tools:gnu/linux:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: setup
   before_script:
-    - python3 -m venv venv
     - *unix-activate-venv
-    - python3 -m pip install -r requirements.txt
   script:
-    - >-
-      cmake -B ${BUILDDIR} ${COMMON_CMAKE_OPTIONS}
-      -G "Ninja"
-      -DCMAKE_C_COMPILER=clang
-      -DCMAKE_CXX_COMPILER=clang++
-      -DCMAKE_PREFIX_PATH=${INSTALLED_QT_PREFIX}
-      -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
-      -DZRYTHM_USER_MANUAL=ON
-      -DZRYTHM_STRICT_SPHINX_OPTS=ON
-      -DZRYTHM_UNITY_BUILD=OFF
-      -DCMAKE_LINKER_TYPE=MOLD
+    - conan install . -pr:h clang_debug -pr:b gcc_release --build=missing --lockfile=conan.lock
+    - cmake --preset default -DZRYTHM_USER_MANUAL=ON -DZRYTHM_UNITY_BUILD=OFF -DCMAKE_LINKER_TYPE=MOLD
   artifacts:
     paths:
-      - ${BUILDDIR}
+      - conanbuild/Debug
     exclude:
-      - ${BUILDDIR}/**/.git/**/*
+      - conanbuild/Debug/**/.git/**/*
     expire_in: 1 day
 
-# Memo - Qt configured with (unity build fails):
-# ../configure -skip qtgrpc -release -prefix /opt/Qt6.11.0/Release
-# -pch -no-gtk -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre
-# -qt-harfbuzz -opensource -confirm-license -skip qtdoc -skip qtwebengine
-# -skip qtconnectivity -skip qtsensors -skip qtserialbus -skip qtserialport
-# -skip qtlocation -skip qtpositioning -skip qtmqtt -skip qtremoteobjects
-# -skip qtopcua -- -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
 configure:mac-arm:
   extends: .mac-arm-template
   stage: setup
   variables:
     GIT_DEPTH: 0 # Fetch full history
   before_script:
-    - python3 -m venv venv
     - *unix-activate-venv
-    - python3 -m pip install -r requirements.txt
   script:
+    - conan install . -pr:h ${HOST_PROFILE} -pr:b appleclang_build --build=missing --lockfile=conan.lock
     - >-
-      cmake -B ${BUILDDIR}-${BUILD_TYPE} ${COMMON_CMAKE_OPTIONS}
-      -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
-      -G "Xcode"
-      "-DCMAKE_PREFIX_PATH=/opt/Qt6.11.0/${BUILD_TYPE}"
+      cmake --preset default
       -DZRYTHM_UNITY_BUILD=ON
       -DAPPLE_APP_CODESIGN_IDENTITY="Developer ID Application: Alexandros Theodotou ($APPLE_NOTARIZATION_TEAM_ID)"
   parallel:
     matrix:
-      - BUILD_TYPE: [Debug, Release]
+      - BUILD_TYPE: Debug
+        HOST_PROFILE: appleclang_debug
+      - BUILD_TYPE: Release
+        HOST_PROFILE: appleclang_release
   artifacts:
     paths:
-      - ${BUILDDIR}-${BUILD_TYPE}
+      - conanbuild/${BUILD_TYPE}
     exclude:
-      - ${BUILDDIR}-${BUILD_TYPE}/**/.git/**/*
+      - conanbuild/${BUILD_TYPE}/**/.git/**/*
     expire_in: 1 day
 
-# Memo - Qt configured with (-pch option caused failures in release build):
-# configure.bat -skip qtgrpc -release -prefix 'C:\Qt\Qt-6.9.0-release'
-# -unity-build -no-gtk -qt-zlib -qt-libjpeg -qt-libpng -qt-freetype -qt-pcre
-# -qt-harfbuzz -opensource -confirm-license -skip qtdoc -skip qtwebengine
-# -skip qtconnectivity -skip qtsensors -skip qtserialbus -skip qtserialport
-# -skip qtlocation -skip qtpositioning -skip qtmqtt -skip qtremoteobjects
-# -skip qtopcua -- -DCMAKE_OBJECT_PATH_MAX=1000
 configure:windows:
-  extends: .windows-template
+  extends: .windows-with-conan
   stage: setup
   variables:
     GIT_DEPTH: 0 # Fetch full history
-  before_script:
-    - *windows-enable-vs-env
-    - python -m venv venv
-    - *windows-activate-venv
-    - python -m pip install -r requirements.txt
   script:
-    - >-
-      cmake -B "${env:BUILDDIR}-${env:BUILD_TYPE}"
-      -DZRYTHM_STRICT=ON
-      -DZRYTHM_TESTS=ON
-      -DZRYTHM_QML_TESTS=ON
-      -DZRYTHM_BENCHMARKS=ON
-      -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER
-      -DCPM_DOWNLOAD_ALL=ON
-      -DZRYTHM_WITH_BUNDLED_THIRD_PARTY_ATTRIBUTIONS=ON
-      -DZRYTHM_WITH_ASIO=ON
-      "-DCMAKE_PREFIX_PATH=C:\Qt\Qt-6.11.0\${env:BUILD_TYPE}"
-      -G "Visual Studio 18 2026"
-      "-DCMAKE_BUILD_TYPE=${env:BUILD_TYPE}"
-      "-DCMAKE_INSTALL_PREFIX=${PWD}\${env:INSTALLDIR}"
-      -DZRYTHM_VERIFY_INTERFACE_HEADER_SETS=ON
-      -DZRYTHM_UNITY_BUILD=ON
-      -DZRYTHM_MSVC_RELEASE_ARCH=AVX
+    - conan install . -pr:h ${env:HOST_PROFILE} -pr:b msvc_release --build=missing --lockfile=conan.lock
+    - cmake --preset default -DZRYTHM_WITH_ASIO=ON
   parallel:
     matrix:
-      - BUILD_TYPE: [Debug, Release]
+      - BUILD_TYPE: Debug
+        HOST_PROFILE: msvc_debug
+      - BUILD_TYPE: Release
+        HOST_PROFILE: msvc_release
   artifacts:
     paths:
-      - ${BUILDDIR}-${BUILD_TYPE}
+      - conanbuild/${BUILD_TYPE}
     exclude:
-      - ${BUILDDIR}-${BUILD_TYPE}/**/.git/**/*
+      - conanbuild/${BUILD_TYPE}/**/.git/**/*
     expire_in: 1 day
 
 check:clazy:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: check
   needs: []
   script:
     - export CLAZY_CHECKS="level0"
-    - >-
-      cmake -B build_clazy ${COMMON_CMAKE_OPTIONS}
-      -G "Ninja"
-      -DCMAKE_C_COMPILER=clang
-      -DCMAKE_CXX_COMPILER=clazy
-      -DCMAKE_PREFIX_PATH=${INSTALLED_QT_PREFIX}
-      -DCMAKE_BUILD_TYPE=Debug
-      -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
-      -DZRYTHM_UNITY_BUILD=OFF
-    - cmake --build build_clazy --parallel || true # TODO
+    - conan install . -pr:h clang_debug -pr:b gcc_release --build=missing --lockfile=conan.lock
+    - cmake --preset default -DCMAKE_CXX_COMPILER=clazy -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DZRYTHM_UNITY_BUILD=OFF
+    - cmake --build conanbuild/Debug --parallel || true # TODO
 
 check:clang-format:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: check
   needs: []
   script:
@@ -312,21 +248,19 @@ check:reuse:
 
 check:exif:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: check
   needs: []
   script:
     - scripts/exif_check.sh
 
 .unix_test_cmd: &unix_test_cmd
-  - ctest --test-dir ${BUILDDIR}-${BUILD_TYPE} -C ${BUILD_TYPE} -D NightlyTest --rerun-failed --output-on-failure
+  - ctest --test-dir conanbuild/${BUILD_TYPE} -C ${BUILD_TYPE} -D NightlyTest --rerun-failed --output-on-failure
   - if [ "${BUILD_TYPE}" = "Debug" ]; then
-      ctest --test-dir ${BUILDDIR}-${BUILD_TYPE} -C ${BUILD_TYPE} -D NightlyCoverage ;
+      ctest --test-dir conanbuild/${BUILD_TYPE} -C ${BUILD_TYPE} -D NightlyCoverage ;
     fi
-  - ctest --test-dir ${BUILDDIR}-${BUILD_TYPE} -C ${BUILD_TYPE} -D NightlySubmit
+  - ctest --test-dir conanbuild/${BUILD_TYPE} -C ${BUILD_TYPE} -D NightlySubmit
   - if [ "${BUILD_TYPE}" = "Release" ]; then
-      cmake --build ${BUILDDIR}-${BUILD_TYPE} --config ${BUILD_TYPE} --target run_all_benchmarks ;
+      cmake --build conanbuild/${BUILD_TYPE} --config ${BUILD_TYPE} --target run_all_benchmarks ;
     fi
 
 check:qmllint:
@@ -338,8 +272,9 @@ check:qmllint:
       parallel:
         matrix:
           - BUILD_TYPE: Debug
+            HOST_PROFILE: gcc_debug
   script:
-    - (cmake --build ${BUILDDIR}-Debug --config Debug --target all_qmllint 2>&1 || true) | tee qmllint_output.txt
+    - (cmake --build conanbuild/Debug --config Debug --target all_qmllint 2>&1 || true) | tee qmllint_output.txt
     - |
       WARNING_COUNT=$(grep 'Warning: ' qmllint_output.txt | grep "${CI_PROJECT_DIR}/src/gui/qml/" | grep -v 'ZrythmStyle' | grep -v 'not found on type "QObject"' | grep -v 'not found on type "QQuickItem"' | grep -v 'Type "QColor" of property "color" not found' | wc -l)
       echo "QML lint warning count (filtered): ${WARNING_COUNT}"
@@ -353,64 +288,109 @@ check:clang-tidy:
   rules:
     - when: never # temporarily disable due to compilation issues
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: check
   needs:
     - job: configure-for-tools:gnu/linux
       artifacts: true
   script:
-    - >-
-      cmake -B ${BUILDDIR} ${COMMON_CMAKE_OPTIONS}
-      -G "Ninja"
-      -DCMAKE_C_COMPILER=clang
-      -DCMAKE_CXX_COMPILER=clang++
-      -DCMAKE_PREFIX_PATH=${INSTALLED_QT_PREFIX}
-      -DCMAKE_BUILD_TYPE=Debug
-      -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
-      -DZRYTHM_UNITY_BUILD=OFF
+    - conan install . -pr:h clang_debug -pr:b gcc_release --build=missing --lockfile=conan.lock
+    - cmake --preset default -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DZRYTHM_UNITY_BUILD=OFF
     - >-
       git diff -U0 HEAD^
       | python3 /usr/share/clang/clang-tidy-diff.py -p1
-      -path ${BUILDDIR} -config-file .clang-tidy
+      -path conanbuild/Debug -config-file .clang-tidy
       -use-color
 
-check:sanitizer-undefined:
+build:sanitizer-asan-ubsan:gnu-linux:
   extends: .sanitizer-template
+  stage: build
   variables:
-    SANITIZER_TYPE: "UNDEFINED_BEHAVIOR"
+    CREATE_APPIMAGE: "ON"
+  artifacts:
+    paths:
+      - package-${SANITIZER_OPTION}-debug/*.AppImage*
+      - conanbuild/Debug/test_results/*.xml
+    when: always
+    expire_in: "1 day"
+    reports:
+      junit: conanbuild/Debug/test_results/*.xml
 
 check:sanitizer-thread:
   extends: .sanitizer-template
   variables:
-    SANITIZER_TYPE: "THREAD"
-    INSTALLED_QT_PREFIX: "/opt/Qt-6.11.1/Debug-tsan"
+    HOST_PROFILE: "clang_tsan"
+    SANITIZER_OPTION: "thread"
     # Linker errors when building bundled plugins
     WITH_BUNDLED_PLUGINS: "OFF"
 
 check:sanitizer-realtime:
   extends: .sanitizer-template
   variables:
-    SANITIZER_TYPE: "REALTIME"
+    SANITIZER_OPTION: "realtime"
+
+build:sanitizer-asan-ubsan:mac-arm:
+  extends: .mac-arm-template
+  stage: build
+  timeout: 2h
+  needs: []
+  variables:
+    HOST_PROFILE: "appleclang_debug"
+  script:
+    - conan install . -pr:h ${HOST_PROFILE} -pr:b appleclang_build -o sanitizer=address_undefined --build=missing --lockfile=conan.lock
+    - cmake --preset default -DZRYTHM_UNITY_BUILD=OFF
+    - cmake --build conanbuild/Debug --parallel 4
+    - source conanbuild/Debug/generators/conanrun.sh && ctest --test-dir conanbuild/Debug --rerun-failed --output-on-failure
+    - cpack -G "DragNDrop" -C Debug --config conanbuild/Debug/CPackConfig.cmake -B package-asan-ubsan-debug
+    - >-
+      scripts/mac_codesign_dmg_for_debug.sh "package-asan-ubsan-debug"/*.dmg "Developer ID Application: Alexandros Theodotou ($APPLE_NOTARIZATION_TEAM_ID)"
+  artifacts:
+    paths:
+      - package-asan-ubsan-debug/*.dmg*
+      - conanbuild/Debug/test_results/*.xml
+    when: always
+    expire_in: "1 day"
+    reports:
+      junit: conanbuild/Debug/test_results/*.xml
+
+# Disabled: MSVC /fsanitize=address sets `annotate_optional` on every object and
+# the linker hard-enforces consistency (LNK2038) across all objects in a binary.
+# The CMake-level sanitizer (-o sanitizer=address) only instruments Zrythm
+# targets, so static C++ Conan deps (fmt, spdlog, etc.) cause mismatches.
+# Re-enable by switching to profile-level ASan (msvc_asan) or shared deps.
+# build:sanitizer-asan:windows:
+#   extends: .windows-with-conan
+#   stage: build
+#   timeout: 3h
+#   needs: []
+#   variables:
+#     HOST_PROFILE: "msvc_debug"
+#   script:
+#     - conan install . -pr:h ${env:HOST_PROFILE} -pr:b msvc_release -o sanitizer=address --build=missing --lockfile=conan.lock
+#     - cmake --preset default
+#     - cmake --build "conanbuild/Debug" --config Debug --parallel
+#     - if (! $?) { exit 1 }
+#     - ctest --test-dir "conanbuild/Debug" -C Debug --rerun-failed --output-on-failure
+#     - $shortPackageDir = "C:\tmp\package-asan-debug"
+#     - if (Test-Path $shortPackageDir) { Remove-Item -Recurse -Force $shortPackageDir }
+#     - New-Item -ItemType Directory -Path $shortPackageDir -Force
+#     - cpack -G INNOSETUP -C Debug --config "conanbuild/Debug/CPackConfig.cmake" -B $shortPackageDir; if (-not $?) { Get-Content "$shortPackageDir\_CPack_Packages\win64\INNOSETUP\ISCCOutput.log"; exit 1 }
+#     - if (Test-Path "package-asan-debug") { Remove-Item -Recurse -Force "package-asan-debug" }
+#     - New-Item -ItemType Directory -Path "package-asan-debug" -Force
+#     - Move-Item "$shortPackageDir\*.exe*" "package-asan-debug\"
+#   artifacts:
+#     paths:
+#       - package-asan-debug/*.exe*
+#     when: on_success
+#     expire_in: "1 day"
 
 check:build-without-pch:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: check
   needs: []
   script:
-    - >-
-      cmake -B build_no_pch ${COMMON_CMAKE_OPTIONS}
-      -G "Ninja"
-      -DCMAKE_C_COMPILER=gcc
-      -DCMAKE_CXX_COMPILER=g++
-      -DCMAKE_PREFIX_PATH=${INSTALLED_QT_PREFIX}
-      -DCMAKE_BUILD_TYPE=Release
-      -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON
-      -DZRYTHM_UNITY_BUILD=OFF
-      -DZRYTHM_TESTS=OFF
-    - cmake --build build_no_pch --parallel
+    - conan install . -pr:h gcc_release -pr:b gcc_release --build=missing --lockfile=conan.lock
+    - cmake --preset default -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON -DZRYTHM_UNITY_BUILD=OFF -DZRYTHM_TESTS=OFF
+    - cmake --build conanbuild/Release --parallel
 
 # AddressSanitizer/LeakSanitizer/MemorySanitizer are not needed since we are
 # running valgrind anyway
@@ -424,33 +404,35 @@ build:gnu/linux:
       parallel:
         matrix:
           - BUILD_TYPE: $[[ matrix.BUILD_TYPE ]]
+            HOST_PROFILE: $[[ matrix.HOST_PROFILE ]]
     - job: check:exif
     - job: check:reuse
     - job: check:clang-format
   timeout: 2h # a lot of tools are run here
   script:
-    - cmake --build ${BUILDDIR}-${BUILD_TYPE} --config ${BUILD_TYPE} --parallel --target all all_verify_interface_header_sets
+    - cmake --build conanbuild/${BUILD_TYPE} --config ${BUILD_TYPE} --parallel --target all all_verify_interface_header_sets
     - *unix_test_cmd
     # Run valgrind tests in parallel because they take a long time
     - >-
-      ctest --test-dir ${BUILDDIR}-${BUILD_TYPE} --parallel $(($(nproc) / 2)) --test-load $(($(nproc) / 2))
+      ctest --test-dir conanbuild/${BUILD_TYPE} --parallel $(($(nproc) / 2)) --test-load $(($(nproc) / 2))
       --overwrite MemoryCheckCommandOptions="--undef-value-errors=no --exit-on-first-error=yes --error-exitcode=1"
       -T memcheck -E "(appstream-util-validate-appdata|zrythm_gui_qml_unit_tests)" --rerun-failed --output-on-failure
-    - cpack -G TXZ -C ${BUILD_TYPE} --config ${BUILDDIR}-${BUILD_TYPE}/CPackConfig.cmake -B package-${BUILD_TYPE}
-    - APPIMAGE_EXTRACT_AND_RUN=1 cpack -G AppImage -C ${BUILD_TYPE} --config ${BUILDDIR}-${BUILD_TYPE}/CPackConfig.cmake -B package-${BUILD_TYPE}
+    - APPIMAGE_EXTRACT_AND_RUN=1 cpack -G AppImage -C ${BUILD_TYPE} --config conanbuild/${BUILD_TYPE}/CPackConfig.cmake -B package-${BUILD_TYPE}
   parallel:
     matrix:
-      - BUILD_TYPE: [Debug, Release]
+      - BUILD_TYPE: Debug
+        HOST_PROFILE: gcc_debug
+      - BUILD_TYPE: Release
+        HOST_PROFILE: gcc_release
   artifacts:
     paths:
-      - ${BUILDDIR}-${BUILD_TYPE}/version.env
-      - package-${BUILD_TYPE}/*.tar.xz*
+      - conanbuild/${BUILD_TYPE}/version.env
       - package-${BUILD_TYPE}/*.AppImage*
-      - ${BUILDDIR}-${BUILD_TYPE}/test_results/*.xml
+      - conanbuild/${BUILD_TYPE}/test_results/*.xml
     when: always # Not ideal, see GitLab.com #18744
     expire_in: "1 day"
     reports:
-      junit: ${BUILDDIR}-${BUILD_TYPE}/test_results/*.xml
+      junit: conanbuild/${BUILD_TYPE}/test_results/*.xml
   coverage: '/Percentage Coverage:\s+(\d+\.\d+)%$/'
 
 build:mac-arm:
@@ -463,11 +445,12 @@ build:mac-arm:
       parallel:
         matrix:
           - BUILD_TYPE: $[[ matrix.BUILD_TYPE ]]
+            HOST_PROFILE: $[[ matrix.HOST_PROFILE ]]
   script:
     # Limit parallel jobs because xcode clang forces a whole system restart when building debug builds
-    - cmake --build ${BUILDDIR}-${BUILD_TYPE} --config ${BUILD_TYPE} --parallel 4
+    - cmake --build conanbuild/${BUILD_TYPE} --config ${BUILD_TYPE} --parallel 4
     - *unix_test_cmd
-    - cpack -G "DragNDrop" -C ${BUILD_TYPE} --config ${BUILDDIR}-${BUILD_TYPE}/CPackConfig.cmake --verbose -B package-${BUILD_TYPE}
+    - cpack -G "DragNDrop" -C ${BUILD_TYPE} --config conanbuild/${BUILD_TYPE}/CPackConfig.cmake -B package-${BUILD_TYPE}
     - >-
       if [ "${BUILD_TYPE}" = "Release" ]; then
         scripts/mac_codesign_and_notarize_dmg.sh "package-${BUILD_TYPE}"/*.dmg "Developer ID Application: Alexandros Theodotou ($APPLE_NOTARIZATION_TEAM_ID)"
@@ -476,15 +459,18 @@ build:mac-arm:
       fi
   parallel:
     matrix:
-      - BUILD_TYPE: [Debug, Release]
+      - BUILD_TYPE: Debug
+        HOST_PROFILE: appleclang_debug
+      - BUILD_TYPE: Release
+        HOST_PROFILE: appleclang_release
   artifacts:
     paths:
       - package-${BUILD_TYPE}/*.dmg*
-      - ${BUILDDIR}-${BUILD_TYPE}/test_results/*.xml
+      - conanbuild/${BUILD_TYPE}/test_results/*.xml
     when: always
     expire_in: "1 day"
     reports:
-      junit: ${BUILDDIR}-${BUILD_TYPE}/test_results/*.xml
+      junit: conanbuild/${BUILD_TYPE}/test_results/*.xml
 
 build:windows:
   extends: .windows-template
@@ -496,23 +482,28 @@ build:windows:
       parallel:
         matrix:
           - BUILD_TYPE: $[[ matrix.BUILD_TYPE ]]
+            HOST_PROFILE: $[[ matrix.HOST_PROFILE ]]
   script:
-    - cmake --build "${env:BUILDDIR}-${env:BUILD_TYPE}" --config "${env:BUILD_TYPE}" --parallel -- /verbosity:minimal "/consoleLoggerParameters:NoSummary;ForceConsoleColor"
-    - if (! $?) { exit 1 } # Check if the previous command failed
-    - ctest --test-dir "${env:BUILDDIR}-${env:BUILD_TYPE}" -C "${env:BUILD_TYPE}" -D NightlyTest -D NightlySubmit --rerun-failed --output-on-failure
-    - if ("${env:BUILD_TYPE}" -eq "Release") { cmake --build "${BUILDDIR}-${BUILD_TYPE}" --config "${env:BUILD_TYPE}" --target run_all_benchmarks }
+    # MSBuild flags for VS generator: -- /verbosity:minimal "/consoleLoggerParameters:NoSummary;ForceConsoleColor"
+    - cmake --build "conanbuild/${env:BUILD_TYPE}" --config "${env:BUILD_TYPE}" --parallel
+    - if (! $?) { exit 1 }
+    - ctest --test-dir "conanbuild/${env:BUILD_TYPE}" -C "${env:BUILD_TYPE}" -D NightlyTest -D NightlySubmit --rerun-failed --output-on-failure
+    - if ("${env:BUILD_TYPE}" -eq "Release") { cmake --build "conanbuild/${env:BUILD_TYPE}" --config "${env:BUILD_TYPE}" --target run_all_benchmarks }
     # Use shorter path for packaging to avoid Windows path length limitations
     - $shortPackageDir = "C:\tmp\package-${env:BUILD_TYPE}"
     - if (Test-Path $shortPackageDir) { Remove-Item -Recurse -Force $shortPackageDir }
     - New-Item -ItemType Directory -Path $shortPackageDir -Force
-    - cpack -G INNOSETUP -C ${env:BUILD_TYPE} --config ${env:BUILDDIR}-${env:BUILD_TYPE}/CPackConfig.cmake --verbose -B $shortPackageDir; if (-not $?) { Get-Content "$shortPackageDir/_CPack_Packages/win64/INNOSETUP/ISCCOutput.log"; exit 1 }
+    - cpack -G INNOSETUP -C ${env:BUILD_TYPE} --config "conanbuild/${env:BUILD_TYPE}/CPackConfig.cmake" -B $shortPackageDir; if (-not $?) { Get-Content "$shortPackageDir/_CPack_Packages/win64/INNOSETUP/ISCCOutput.log"; exit 1 }
     # Move the resulting exe files to the expected location for artifacts
     - if (Test-Path "package-${env:BUILD_TYPE}") { Remove-Item -Recurse -Force "package-${env:BUILD_TYPE}" }
     - New-Item -ItemType Directory -Path "package-${env:BUILD_TYPE}" -Force
     - Move-Item "$shortPackageDir\*.exe*" "package-${env:BUILD_TYPE}\"
   parallel:
     matrix:
-      - BUILD_TYPE: [Debug, Release]
+      - BUILD_TYPE: Debug
+        HOST_PROFILE: msvc_debug
+      - BUILD_TYPE: Release
+        HOST_PROFILE: msvc_release
   artifacts:
     paths:
       - package-${BUILD_TYPE}/*.exe*
@@ -521,8 +512,6 @@ build:windows:
 
 update-manual:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: deploy
   only:
     - master
@@ -532,16 +521,14 @@ update-manual:
     - job: configure-for-tools:gnu/linux
       artifacts: true
   script:
-    - cmake --build ${BUILDDIR} --target manual_bundle &> manual_bundle_results.txt || (cat manual_bundle_results.txt && exit 1)
-    - rsync -av --no-group --omit-dir-times --exclude '*.zip' "${BUILDDIR}"/doc/user/_rendered/* $REMOTE_CI_USER@www.zrythm.org:$REMOTE_USER_MANUAL_UPLOAD_PATH
+    - cmake --build conanbuild/Debug --target manual_bundle &> manual_bundle_results.txt || (cat manual_bundle_results.txt && exit 1)
+    - rsync -av --no-group --omit-dir-times --exclude '*.zip' conanbuild/Debug/doc/user/_rendered/* $REMOTE_CI_USER@www.zrythm.org:$REMOTE_USER_MANUAL_UPLOAD_PATH
   before_script:
     - *ssh-setup
     - *unix-activate-venv
 
 update-dev-docs:
   extends: .gnu-linux-template
-  tags:
-    - archlinux
   stage: deploy
   only:
     - master
@@ -551,8 +538,8 @@ update-dev-docs:
     - job: configure-for-tools:gnu/linux
       artifacts: true
   script:
-    - cmake --build ${BUILDDIR} --target doxygen-docs &> gen_dev_docs_results.txt || (cat gen_dev_docs_results.txt && exit 1)
-    - rsync -av --no-group --omit-dir-times "${BUILDDIR}"/doc/dev/html/* $REMOTE_CI_USER@www.zrythm.org:$REMOTE_DEV_DOCS_UPLOAD_PATH
+    - cmake --build conanbuild/Debug --target doxygen-docs &> gen_dev_docs_results.txt || (cat gen_dev_docs_results.txt && exit 1)
+    - rsync -av --no-group --omit-dir-times conanbuild/Debug/doc/dev/html/* $REMOTE_CI_USER@www.zrythm.org:$REMOTE_DEV_DOCS_UPLOAD_PATH
   before_script:
     - *ssh-setup
     - *unix-activate-venv
@@ -560,8 +547,6 @@ update-dev-docs:
 deploy:installers:
   extends: .gnu-linux-template
   stage: deploy
-  tags:
-    - archlinux
   only:
     - master
     - tags
@@ -574,7 +559,7 @@ deploy:installers:
       artifacts: true
   script:
     # Source version info generated by CMake during configure (see GetVersionFromGitTag.cmake)
-    - source ${BUILDDIR}-Release/version.env
+    - source conanbuild/Release/version.env
     - VERSION_WITHOUT_V=$(echo $VERSION_STRING_FULL | sed 's/^v//')
     # Deploy Windows installer
     - windowsArtifact=$(find package-Release -name "*.exe" | head -n 1)
@@ -585,11 +570,6 @@ deploy:installers:
     - macArtifact=$(find package-Release -name "*.dmg" | head -n 1)
     - if [ -n "$macArtifact" ]; then
       python3 scripts/deploy_file_to_s3.py --prefix "packages/macos-universal" "$macArtifact";
-      fi
-    # Deploy Linux tarball
-    - gnuLinuxArtifact=$(find package-Release -name "*.tar.xz" | head -n 1)
-    - if [ -n "$gnuLinuxArtifact" ]; then
-      python3 scripts/deploy_file_to_s3.py --prefix "packages/gnu-linux-cpack" "$gnuLinuxArtifact";
       fi
     # Deploy Linux AppImage
     - gnuLinuxAppImageArtifact=$(find package-Release -name "*.AppImage" | head -n 1)
@@ -613,8 +593,6 @@ deploy:installers:
 deploy:github-release:
   extends: .gnu-linux-template
   stage: deploy
-  tags:
-    - archlinux
   only:
     - tags
   needs:
@@ -624,8 +602,9 @@ deploy:github-release:
       parallel:
         matrix:
           - BUILD_TYPE: Release
+            HOST_PROFILE: gcc_release
   script:
-    - source ${BUILDDIR}-Release/version.env
+    - source conanbuild/Release/version.env
     - VERSION_WITHOUT_V=$(echo $VERSION_STRING_FULL | sed 's/^v//')
     - python3 scripts/create_github_release.py "$VERSION_WITHOUT_V"
   before_script:

@@ -12,34 +12,34 @@ This document provides essential coding guidelines for AI agents working with th
 ### Building
 
 ```bash
-# Build (assumes builddir_cmake is already configured)
-cmake --build builddir_cmake --config Debug
+# Build (assumes conanbuild/Debug is already configured)
+cmake --build conanbuild/Debug --config Debug
 
-# Binary location: builddir_cmake/products/bin/zrythm
+# Binary location: conanbuild/Debug/products/bin/zrythm
 ```
 
 ### Testing
 
-**IMPORTANT:** Always use `ctest --test-dir builddir_cmake` rather than `cd builddir_cmake && ctest`. The `--test-dir` flag allows running tests from any directory without changing the working directory.
+**IMPORTANT:** Always use `ctest --test-dir conanbuild/Debug` rather than `cd conanbuild/Debug && ctest`. The `--test-dir` flag allows running tests from any directory without changing the working directory.
 
 ```bash
 # Run all tests via CTest
-ctest --test-dir builddir_cmake --output-on-failure -j$(nproc)
+ctest --test-dir conanbuild/Debug --output-on-failure -j$(nproc)
 
 # Run specific tests by pattern (uses regex matching on test names)
 # Test names follow the pattern: TestClassName.TestMethodName
-ctest --test-dir builddir_cmake -R "ProjectSerializationTest" --output-on-failure
-ctest --test-dir builddir_cmake -R "ProjectLoaderTest" --output-on-failure
-ctest --test-dir builddir_cmake -R "TransportControllerTest" --output-on-failure
+ctest --test-dir conanbuild/Debug -R "ProjectSerializationTest" --output-on-failure
+ctest --test-dir conanbuild/Debug -R "ProjectLoaderTest" --output-on-failure
+ctest --test-dir conanbuild/Debug -R "TransportControllerTest" --output-on-failure
 
 # List all available tests to see test names
-ctest --test-dir builddir_cmake -N
+ctest --test-dir conanbuild/Debug -N
 
 # Run specific test binary directly (used when we want to run the full module test suite)
-./builddir_cmake/products/bin/zrythm_dsp_unit_tests
+./conanbuild/Debug/products/bin/zrythm_dsp_unit_tests
 
 # Run specific test case with filter
-./builddir_cmake/products/bin/zrythm_dsp_unit_tests --gtest_filter=TempoMapTest.testCaseName
+./conanbuild/Debug/products/bin/zrythm_dsp_unit_tests --gtest_filter=TempoMapTest.testCaseName
 ```
 
 When investigating a test failure, run the failing test alone with `--output-on-failure` and **do not clip the output** — the full output (including ASan stack traces, assertion messages, and gtest logs) is often needed to diagnose the root cause. Use `-R "<TestName>"` to isolate a single test.
@@ -47,7 +47,7 @@ When investigating a test failure, run the failing test alone with `--output-on-
 **All tests are assumed to pass at each commit.** If a test fails after uncommitted changes, it is almost always those changes' fault — do not waste time checking whether the test was already broken.
 
 ```bash
-ctest --test-dir builddir_cmake -R "TestName" --output-on-failure
+ctest --test-dir conanbuild/Debug -R "TestName" --output-on-failure
 ```
 
 ### Test Binary Target Names
@@ -58,15 +58,15 @@ Test binary targets follow a strict naming convention. **Do not guess target nam
 - **Benchmarks**: `zrythm_<path_with_underscores>_benchmarks` (same pattern, under `tests/benchmarks/`)
 - **Integration tests**: `zrythm_integration_tests`
 
-When unsure, list all targets with: `ctest --test-dir builddir_cmake -N`
+When unsure, list all targets with: `ctest --test-dir conanbuild/Debug -N`
 
 ### Packaging
 
 For testing changes in packaged builds:
 
 ```bash
-cpack -G AppImage -C Debug -B builddir_cmake
-# Output: builddir_cmake/Zrythm-<version>-Linux.AppImage
+cpack -G AppImage -C Debug -B conanbuild/Debug
+# Output: conanbuild/Debug/Zrythm-<version>-Linux.AppImage
 ```
 
 ### Code Quality
@@ -79,7 +79,7 @@ clang-format -i src/file.cpp
 pre-commit run --all-files
 
 # Run clang-tidy (requires compile_commands.json)
-clang-tidy src/file.cpp -p builddir_cmake
+clang-tidy src/file.cpp -p conanbuild/Debug
 ```
 
 ---
@@ -129,14 +129,14 @@ Dependencies are defined in [`package-lock.cmake`](package-lock.cmake) and fetch
 
 ### Build System Notes
 
-- **Binary Output**: `builddir_cmake/products/bin/`
+- **Binary Output**: `conanbuild/Debug/products/bin/`
 - **Tests**: Enable with `-DZRYTHM_TESTS=ON`, `-DZRYTHM_BENCHMARKS=ON`, or `-DZRYTHM_QML_TESTS=ON` during CMake configuration
-- **Working Directory**: Never use `cd` for build/test commands; pass the build directory as an argument (e.g., `cmake --build builddir_cmake`, `ctest --test-dir builddir_cmake`)
+- **Working Directory**: Never use `cd` for build/test commands; pass the build directory as an argument (e.g., `cmake --build conanbuild/Debug`, `ctest --test-dir conanbuild/Debug`)
 - **AUTOMOC cache staleness**: When adding a new header containing `Q_OBJECT`/`Q_GADGET`/`QML_ELEMENT`, CMake's AUTOMOC may fail to pick it up even after reconfiguring, producing linker errors like `undefined symbol: ...::staticMetaObject` or `vtable for ...`. Fix by deleting the affected target's autogen directories and reconfiguring. For the GUI library:
   ```bash
-  rm -rf builddir_cmake/src/zrythm_gui_lib_autogen \
-         builddir_cmake/src/CMakeFiles/zrythm_gui_lib.dir/zrythm_gui_lib_autogen
-  cmake -B builddir_cmake -S .
+  rm -rf conanbuild/Debug/src/zrythm_gui_lib_autogen \
+         conanbuild/Debug/src/CMakeFiles/zrythm_gui_lib.dir/zrythm_gui_lib_autogen
+  cmake --preset default
   ```
   The same pattern applies to other targets — substitute the target name in the paths.
 

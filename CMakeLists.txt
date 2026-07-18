@@ -6,27 +6,7 @@ cmake_minimum_required(VERSION 3.24)
 # We don't use modules (yet)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
-if(APPLE)
-  # 10.15 -> std::filesystem::path
-  # 11.0 -> semaphore.try_acquire
-  # 13 -> https://doc-snapshots.qt.io/qt6-dev/macos.html
-  # must be specified before project()
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum OS X deployment version")
-
-  # this might be needed for homebrew
-  if(NOT DEFINED CMAKE_OSX_SYSROOT)
-    execute_process(COMMAND xcrun --show-sdk-path OUTPUT_VARIABLE CMAKE_OSX_SYSROOT OUTPUT_STRIP_TRAILING_WHITESPACE)
-  endif()
-  message(STATUS "Using SDK: ${CMAKE_OSX_SYSROOT}")
-
-  # universal build
-  if (NOT DEFINED CMAKE_OSX_ARCHITECTURES)
-    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
-  endif()
-
-  set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LANGUAGE_STANDARD "c++23")
-  set(CMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH "NO")
-elseif(MSVC)
+if(MSVC)
   # Note: only DLL is allowed, and it must not be redistributed
   # See https://opensource.stackexchange.com/a/7187
   cmake_policy(SET CMP0091 NEW)  # Ensures CMAKE_MSVC_RUNTIME_LIBRARY is respected
@@ -226,14 +206,15 @@ option(ZRYTHM_STRICT "Compile and link with strict flags (warnings as errors, et
 option(ZRYTHM_EXTRA_OPTIMIZATIONS "Compile and link with extra optimizations (for performance)" ${ZRYTHM_OPTIMIZED_BUILD})
 cmake_dependent_option(ZRYTHM_EXTRA_EXTRA_OPTIMIZATIONS "Compile and link with more aggressive optimizations (experimental)" OFF "ZRYTHM_EXTRA_OPTIMIZATIONS" OFF)
 cmake_dependent_option(ZRYTHM_NATIVE_OPTIMIZATIONS "Compile and link with native (-march/-mtune=native) optimizations (for performance)" OFF "ZRYTHM_EXTRA_OPTIMIZATIONS" OFF)
-option(ZRYTHM_GCC_X86_64_V3_OPTIMIZATIONS "Compile and link with x86-64-v3 optimizations on release builds" OFF)
 option(ZRYTHM_EXTRA_DEBUG_INFO "Compile and link with extra debug info (for debugging) (-g3)" OFF)
+option(ZRYTHM_TIME_TRACE "Generate Clang time trace files (-ftime-trace) for performance profiling" OFF)
 set(ZRYTHM_CARLA_BINARIES_DIR "" CACHE STRING "Location to collect carla discovery and bridge binaries")
 if (WIN32)
   set(ZRYTHM_CARLA_BINARIES_32_BIT_DIR "" CACHE STRING "Location to collect carla discovery and bridge binaries for 32 bit")
 endif()
 set(ZRYTHM_ASIO_SDK_PATH "C:\\ASIOSDK\\2.3.4" CACHE STRING "Root path of ASIO SDK (there should be a 'common` directory here)" )
 option(ZRYTHM_CHECK_UPDATES "Check for updates on startup" ON)
+option(ZRYTHM_DEBUG_QML "Enable QML debugging service (opens a debug port)" OFF)
 option(ZRYTHM_IS_FLATPAK "Whether building for a Flatpak" OFF)
 cmake_dependent_option(ZRYTHM_FOR_FLATHUB "Build for FlatHub (for packaging)" OFF "ZRYTHM_IS_FLATPAK" OFF)
 option(ZRYTHM_RECORD_SWITCHES "Record compiler switches for debugging (if supported)" OFF)
@@ -247,7 +228,6 @@ option(ZRYTHM_CARLA_WITH_CV32_PATCHBAY_VARIANT "Enable support for CV32 patchbay
 option(ZRYTHM_UNITY_BUILD "Enable unity builds where possible" OFF)
 option(ZRYTHM_VERIFY_INTERFACE_HEADER_SETS OFF)
 option(ZRYTHM_COVERAGE "Build with --coverage" OFF)
-option(ZRYTHM_BUILD_WITH_PIPE "Compile with -fpipe where supported (faster but higher RAM requirement)" OFF)
 set(ZRYTHM_MSVC_RELEASE_ARCH "" CACHE STRING "/arch: flag to use when making release builds on MSVC")
 
 # Dependency feature options
@@ -467,6 +447,12 @@ if(WIN32)
   )
 endif()
 
+# GCC 16+ rejects __attribute__((pure)) before noexcept in lambdas;
+# debug_assert hardcodes noexcept after DEBUG_ASSERT_PURE_FUNCTION
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+  add_compile_definitions(DEBUG_ASSERT_PURE_FUNCTION=)
+endif()
+
 if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
   # enable in case we need parallel execution
   # add_compile_definitions(-fexperimental-library)
@@ -526,10 +512,6 @@ if(compiler_gnulike)
   endif()
 endif()
 
-if(ZRYTHM_BUILD_WITH_PIPE AND compiler_gnulike)
-  add_compile_options(-pipe)
-endif()
-
 if(ZRYTHM_RECORD_SWITCHES AND compiler_is_gcc AND NOT WIN32)
   target_compile_options(_zrythm_compile_options INTERFACE -frecord-gcc-switches)
 endif()
@@ -540,9 +522,11 @@ if(ZRYTHM_NATIVE_OPTIMIZATIONS)
   endif()
 endif()
 
-if(ZRYTHM_GCC_X86_64_V3_OPTIMIZATIONS)
-  if(compiler_is_gcc)
-    add_compile_options(-march=x86-64-v3 -mtune=generic)
+if(ZRYTHM_TIME_TRACE)
+  if(compiler_is_clang)
+    target_compile_options(_zrythm_compile_options INTERFACE -ftime-trace)
+  else()
+    message(WARNING "-ftime-trace is only supported by Clang")
   endif()
 endif()
 
@@ -839,14 +823,17 @@ enable_sanitizers(_sanitizers_lib
 )
 add_library(zrythm::sanitizers ALIAS _sanitizers_lib)
 
+# Apply sanitizers to all Zrythm targets (static libs + exe + tests), not just the exe
+target_link_libraries(_zrythm_all_compile_options INTERFACE zrythm::sanitizers)
+
 ##############################################################
 # More dependencies
 ##############################################################
 
 CPMUsePackageLock(package-lock.cmake)
 
-CPMGetPackage(nlohmann_json)
-CPMGetPackage(nlohmann_json_schema_validator)
+find_package(nlohmann_json REQUIRED)
+find_package(nlohmann_json_schema_validator REQUIRED)
 
 CPMGetPackage(clap)
 CPMGetPackage(clap-helpers)
@@ -854,7 +841,7 @@ CPMGetPackage(clap-juce-extensions)
 
 add_subdirectory(ext)
 
-CPMGetPackage(SndFile)
+find_package(SndFile REQUIRED)
 set(HAVE_OPUS TRUE)
 
 # add_library(lv2_lib INTERFACE)
@@ -919,12 +906,9 @@ if(false)
 endif()
 set(HAVE_CARLA FALSE)
 
-CPMGetPackage(zstd)
-add_library(_zstd_lib INTERFACE)
-target_link_libraries(_zstd_lib INTERFACE libzstd_static)
-add_library(zrythm::zstd ALIAS _zstd_lib)
+find_package(zstd REQUIRED)
 
-CPMGetPackage(xxHash)
+find_package(xxHash REQUIRED)
 
 # not used, might use in the future
 if(0)
@@ -947,13 +931,13 @@ if(0)
   endif()
 endif()
 
-CPMGetPackage(magic_enum)
-CPMGetPackage(fmt)
-CPMGetPackage(fast_float) # dependency of scnlib
-CPMGetPackage(scnlib)
+find_package(magic_enum REQUIRED)
+find_package(fmt REQUIRED)
+# CPMGetPackage(fast_float) # dependency of scn
+find_package(scn REQUIRED)
 
 # spdlog
-CPMGetPackage(spdlog)
+find_package(spdlog REQUIRED)
 add_library(_spdlog_lib INTERFACE)
 target_link_libraries(_spdlog_lib INTERFACE spdlog::spdlog)
 target_compile_definitions(_spdlog_lib INTERFACE
@@ -973,38 +957,28 @@ add_library(zrythm::spdlog ALIAS _spdlog_lib)
 
 # pkg_check_modules(RUBBERBAND rubberband REQUIRED IMPORTED_TARGET)
 
-CPMGetPackage(Boost)
+find_package(Boost REQUIRED)
 
-CPMGetPackage(gsl-lite)
-CPMGetPackage(type_safe)
+find_package(gsl-lite REQUIRED)
+find_package(type_safe REQUIRED)
 # mp-units fails to compile on AppleClang and also Au seems more ergonomic
-CPMGetPackage(au)
+find_package(Au REQUIRED)
 
-# For Windows: Prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-CPMGetPackage(GTest)
-add_library(_gtest_libs INTERFACE)
-target_link_libraries(_gtest_libs INTERFACE gtest)
-add_library(_gtest_main_libs INTERFACE)
-target_link_libraries(_gtest_main_libs INTERFACE gtest_main gmock_main)
-add_library(zrythm::gtest ALIAS _gtest_libs)
-add_library(zrythm::gtest_for_tests ALIAS _gtest_main_libs)
-
-CPMGetPackage(benchmark)
-add_library(_benchmark_libs INTERFACE)
-target_link_libraries(_benchmark_libs INTERFACE benchmark::benchmark_main gmock)
-if(MSVC)
-  target_compile_options(benchmark PRIVATE /wd4267)
-elseif(compiler_gnulike)
-  target_compile_options(_benchmark_libs INTERFACE -Wno-error=overloaded-virtual -Wno-error=redundant-decls)
+if(ZRYTHM_TESTS)
+  # For Windows: Prevent overriding the parent project's compiler/linker settings
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  find_package(GTest REQUIRED)
 endif()
-add_library(zrythm::benchmark ALIAS _benchmark_libs)
 
-CPMGetPackage(tbb)
+if(ZRYTHM_BENCHMARKS)
+  find_package(benchmark REQUIRED)
+endif()
+
+find_package(TBB REQUIRED)
 CPMGetPackage(farbot)
 
 if(ZRYTHM_TRACY)
-  CPMGetPackage(Tracy)
+  find_package(Tracy REQUIRED)
   list(APPEND zrythm_link_libs Tracy::TracyClient)
 endif()
 
@@ -1020,6 +994,7 @@ find_package(Qt6 6.11
     QuickTest
     Test
     CanvasPainter
+    Svg
   REQUIRED
 )
 qt_standard_project_setup(
@@ -1033,12 +1008,10 @@ target_compile_definitions(Qt6::Core INTERFACE
   "QT_NO_KEYWORDS"
   "QT_NO_CONTEXTLESS_CONNECT"
 )
-get_filename_component(QT6_CMAKE_DIR "${Qt6_DIR}" DIRECTORY)
-get_filename_component(QT6_PREFIX_PATH "${QT6_CMAKE_DIR}/../.." ABSOLUTE)
 if(WIN32)
-  find_program(WINDEPLOYQT_EXECUTABLE windeployqt REQUIRED PATHS "${QT6_PREFIX_PATH}/bin" NO_DEFAULT_PATH)
+  find_program(WINDEPLOYQT_EXECUTABLE windeployqt REQUIRED PATHS "${QT6_INSTALL_PREFIX}/bin" NO_DEFAULT_PATH)
 elseif(APPLE)
-  find_program(MACDEPLOYQT_EXECUTABLE macdeployqt REQUIRED PATHS "${QT6_PREFIX_PATH}/bin" NO_DEFAULT_PATH)
+  find_program(MACDEPLOYQT_EXECUTABLE macdeployqt REQUIRED PATHS "${QT6_INSTALL_PREFIX}/bin" NO_DEFAULT_PATH)
 endif()
 
 add_library(qt_libs INTERFACE)
@@ -1053,6 +1026,7 @@ target_link_libraries(qt_libs
   # Qt6::QmlPrivate
   # Qt6::QuickPrivate
   Qt6::Concurrent
+  Qt6::Svg
 )
 add_library(zrythm::qt_libs ALIAS qt_libs)
 
@@ -1062,7 +1036,7 @@ list(APPEND zrythm_link_libs
   # PkgConfig::CARLA
   # PkgConfig::RTAUDIO
   # PkgConfig::RTMIDI
-  zrythm::zstd
+  zstd::libzstd_static
   zrythm::chromaprint_lib
   Threads::Threads
   zrythm::rubberband
@@ -1076,21 +1050,16 @@ list(APPEND zrythm_link_libs
   fmt::fmt
   scn::scn
   zrythm::spdlog
-  type_safe
+  type_safe::type_safe
   midilib::midilib
   kissfft::kissfft
-  Boost::describe
-  Boost::stl_interfaces
-  Boost::container
-  Boost::unordered
-  Boost::multi_index
+  Boost::headers
   gsl-lite::gsl-lite
   clap-helpers
   TBB::tbb
   farbot::farbot
   Au::au
   zrythm::qt_libs
-  zrythm::gtest
   zrythm::sanitizers
   zrythm::lightweight_semaphore
 )
@@ -1243,6 +1212,16 @@ endif() # ZRYTHM_TESTS
 
 # Add subdirectories
 add_subdirectory(data)
+
+# On macOS, preserve linker search paths in the install rpath so that
+# macdeployqt can find and deploy non-Qt shared libraries (e.g. libtbb)
+# that are referenced via @rpath. macdeployqt resolves @rpath entries
+# using the binary's LC_RPATH, which CMake would otherwise strip at
+# install time. macdeployqt cleans up these rpaths after deployment.
+if(APPLE)
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
+endif()
+
 add_subdirectory(src)
 
 # below errors out on Xcode
@@ -1350,20 +1329,6 @@ elseif(APPLE)
   "
   COMPONENT Runtime)
 else()
-  install(
-    IMPORTED_RUNTIME_ARTIFACTS
-      Qt6::Core
-      Qt6::Gui
-      Qt6::Widgets
-      Qt6::Quick
-      Qt6::QuickControls2
-      Qt6::Concurrent
-    RUNTIME
-      COMPONENT Runtime
-    LIBRARY
-      COMPONENT Runtime
-      NAMELINK_COMPONENT Development
-  )
   qt_generate_deploy_qml_app_script(
     TARGET zrythm
     OUTPUT_SCRIPT deploy_qml_script
@@ -1372,9 +1337,9 @@ else()
   )
   install(SCRIPT ${deploy_qml_script})
   # Deploy Wayland platform plugin (not auto-detected by Qt on XCB builds)
-  if(EXISTS "${QT6_PREFIX_PATH}/plugins/platforms/libqwayland.so")
+  if(EXISTS "${QT6_INSTALL_PREFIX}/plugins/platforms/libqwayland.so")
     install(
-      FILES "${QT6_PREFIX_PATH}/plugins/platforms/libqwayland.so"
+      FILES "${QT6_INSTALL_PREFIX}/plugins/platforms/libqwayland.so"
       DESTINATION plugins/platforms
       COMPONENT Runtime
     )
@@ -1415,6 +1380,7 @@ set(CPACK_THREADS 0) # use all CPU cores
 #   EXPANDED
 #   BOLD_TITLE
 # )
+include(CPackComponent)
 cpack_add_component(Runtime
   DISPLAY_NAME "Zrythm Runtime"
   DESCRIPTION "Zrythm Runtime"
@@ -1440,11 +1406,9 @@ endif()
 
 # -- Generator-specific options --
 
-# Archive generator (GNU/Linux)
-set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
-
 # AppImage generator (GNU/Linux)
 set(CPACK_APPIMAGE_DESKTOP_FILE "org.zrythm.Zrythm.desktop")
+set(CPACK_PRE_BUILD_SCRIPTS "${CMAKE_SOURCE_DIR}/cmake/cpack_pre_build.cmake")
 
 # DragNDrop generator (MacOS)
 set(CPACK_DMG_SLA_USE_RESOURCE_FILE_LICENSE ON)

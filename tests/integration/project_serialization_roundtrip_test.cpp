@@ -17,6 +17,7 @@
 #include "plugins/plugin_descriptor.h"
 #include "structure/project/project_path_provider.h"
 #include "structure/project/project_ui_state.h"
+#include "utils/qt.h"
 
 #include <QSignalSpy>
 
@@ -443,13 +444,13 @@ protected:
                     found = true;
                     EXPECT_FLOAT_EQ (param->baseValue (), original_snap.value)
                       << "Parameter value not preserved: "
-                      << original_snap.name.toStdString ();
+                      << utils::to_std_string (original_snap.name);
                     break;
                   }
               }
             EXPECT_TRUE (found)
               << "Parameter from original not found in loaded plugin: "
-              << original_snap.name.toStdString ();
+              << utils::to_std_string (original_snap.name);
           }
       },
       loaded_plugin_var);

@@ -19,7 +19,6 @@
 #include "utils/debug.h"
 #include "utils/directory_manager.h"
 #include "utils/float_ranges.h"
-#include "utils/gtest_wrapper.h"
 #include "utils/io_utils.h"
 #include "utils/math_utils.h"
 #include "utils/rt_thread_id.h"

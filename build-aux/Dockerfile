@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 # SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 # Set non-interactive frontend (needed to bypass prompts during apt install)
 ENV DEBIAN_FRONTEND=noninteractive
@@ -21,7 +21,11 @@ RUN apt-get update && apt-get install -y \
     libxcb-xkb-dev libxcb-xkb1 pax-utils libfontconfig1-dev itstool \
     libxcb-cursor-dev libxcb-randr0-dev libxcb-render-util0-dev libxcb1-dev \
     libxcb-xinerama0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev \
-    libxkbcommon-x11-dev python3.8-venv ccache libc6-dbg libdbus-1-dev
+    libxkbcommon-x11-dev python3.10-venv ccache libc6-dbg libdbus-1-dev libfuse2 \
+    libx11-xcb-dev libfontenc-dev libice-dev libsm-dev libxaw7-dev libxkbfile-dev \
+    libxmu-dev libxmuu-dev libxpm-dev libxres-dev libxss-dev libxt-dev libxtst-dev \
+    libxv-dev libxxf86vm-dev libxcb-dri3-dev libxcb-dri2-0-dev libxcb-present-dev \
+    libxcb-composite0-dev libxcb-ewmh-dev libxcb-res0-dev
 
 # Binutils
 RUN wget https://sourceware.org/pub/binutils/releases/binutils-2.46.0.tar.xz && \
@@ -74,7 +78,6 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:$PKG_CON
     LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH \
     CMAKE_PREFIX_PATH=/usr/local:$CMAKE_PREFIX_PATH \
     QT_QPA_PLATFORM=offscreen \
-    BOOST_ROOT=/usr/local \
     APPIMAGE_EXTRACT_AND_RUN=1
 
 # Set up environment for all users
@@ -85,8 +88,15 @@ RUN echo 'export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgco
     echo 'export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH' >> /etc/profile.d/zrythm_env.sh && \
     echo 'export CMAKE_PREFIX_PATH=/usr/local:$CMAKE_PREFIX_PATH' >> /etc/profile.d/zrythm_env.sh && \
     echo 'export QT_QPA_PLATFORM=offscreen' >> /etc/profile.d/zrythm_env.sh && \
-    echo 'export BOOST_ROOT=/usr/local' >> /etc/profile.d/zrythm_env.sh && \
     chmod +x /etc/profile.d/zrythm_env.sh
+
+# Expose system wayland .pc files to Conan builds (wayland.enable_libraries=False
+# means Conan only builds wayland-scanner; the actual libraries come from the system)
+RUN mkdir -p /usr/local/lib/pkgconfig && \
+    ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/wayland-client.pc /usr/local/lib/pkgconfig/ && \
+    ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/wayland-server.pc /usr/local/lib/pkgconfig/ && \
+    ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/wayland-cursor.pc /usr/local/lib/pkgconfig/ && \
+    ln -sf /usr/lib/x86_64-linux-gnu/pkgconfig/wayland-egl.pc /usr/local/lib/pkgconfig/
 
 # Valgrind
 RUN wget https://sourceware.org/pub/valgrind/valgrind-3.25.1.tar.bz2 && \
@@ -99,49 +109,24 @@ RUN wget https://sourceware.org/pub/valgrind/valgrind-3.25.1.tar.bz2 && \
     rm -rf valgrind-3.25.1.tar.bz2 valgrind-3.25.1 && \
     valgrind --version
 
+# Python 3.12 (from deadsnakes PPA — Sphinx 9.x requires Python 3.11+)
+RUN apt-get install -y software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y python3.12 python3.12-venv python3.12-dev && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 2 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1 && \
+    python3 -m ensurepip --upgrade && \
+    python3 -m pip install --upgrade pip && \
+    python3 --version
+
 # Build tools
-RUN pip3 install meson cmake ninja reuse
-
-# Boost
-RUN wget https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.gz && \
-    tar -xf boost_1_89_0.tar.gz && \
-    cd boost_1_89_0 && \
-    ./bootstrap.sh && \
-    ./b2 && ./b2 install --prefix=/usr/local && \
-    cd .. && \
-    rm -rf boost_1_89_0.tar.gz boost_1_89_0
-
-# LV2
-RUN wget https://lv2plug.in/spec/lv2-1.18.10.tar.xz && \
-    tar -xf lv2-1.18.10.tar.xz && \
-    cd lv2-1.18.10 && \
-    meson setup build --prefix /usr/local && \
-    meson compile -C build && \
-    meson install -C build && \
-    cd .. && \
-    rm -rf lv2-1.18.10.tar.xz lv2-1.18.10
-
-# Qt (`-unity-build` removed due to compilation error)
-RUN wget https://download.qt.io/official_releases/qt/6.11/6.11.1/single/qt-everywhere-src-6.11.1.tar.xz && \
-    tar -xf qt-everywhere-src-6.11.1.tar.xz && \
-    rm qt-everywhere-src-6.11.1.tar.xz && \
-    cd qt-everywhere-src-6.11.1 && \
-    mkdir build-qt-release && cd build-qt-release && \
-    ../configure -prefix /usr/local -release -no-gtk -dbus-runtime -qt-zlib -qt-libjpeg \
-    -qt-libpng -qt-freetype -qt-pcre -qt-harfbuzz -opensource \
-    -confirm-license \
-    -skip qtgrpc,qtdoc,qtwebengine,qtconnectivity,qtsensors,qtserialbus,qtserialport,qtlocation,qtpositioning,qtmqtt,qtremoteobjects,qtopcua,qt5compat,qtactiveqt,qtcoap,qtpdf,qtquick3d,qtquick3dphysics \
-    -xcb -opengl desktop -egl -pch -force-bundled-libs && \
-    cmake --build . --parallel && \
-    cmake --install . && \
-    cd ../.. && \
-    rm -rf qt-everywhere-src-6.11.1 && \
-    qmllint --version
+RUN python3 -m pip install meson cmake ninja reuse
 
 # Install various utilities
 RUN apt-get install -y curl sudo patchelf
 
-# appimagetool (not available in Ubuntu 20.04 repos)
+# appimagetool (not available in Ubuntu repos)
 RUN curl -L -o /usr/local/bin/appimagetool \
     "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" && \
     chmod +x /usr/local/bin/appimagetool && \
@@ -161,6 +146,48 @@ RUN curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runn
     apt-get install -y gitlab-runner && \
     gitlab-runner --version
 
+# Clang 22 (from apt.llvm.org) — used by clang-based builds, sanitizers,
+# clazy, clang-format, clang-tidy
+RUN wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
+      tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc && \
+    echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-22 main" \
+      > /etc/apt/sources.list.d/llvm.list && \
+    apt-get update && \
+    apt-get install -y \
+      clang-22 clang-tools-22 clang-format-22 clang-tidy-22 \
+      libclang-rt-22-dev libclang-22-dev libc++-22-dev libc++abi-22-dev && \
+    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-22 100 && \
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-22 100 && \
+    update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-22 100 && \
+    update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-22 100 && \
+    ln -sf /usr/share/clang/clang-tidy-diff-22.py /usr/share/clang/clang-tidy-diff.py && \
+    clang --version
+
+# mold linker — used by configure-for-tools job (-DCMAKE_LINKER_TYPE=MOLD)
+RUN MOLD_VERSION=2.41.0 && \
+    wget -qO- "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" | \
+      tar xz -C /tmp && \
+    cp -a /tmp/mold-${MOLD_VERSION}-x86_64-linux/bin/mold /usr/local/bin/ && \
+    ln -sf mold /usr/local/bin/ld.mold && \
+    cp -a /tmp/mold-${MOLD_VERSION}-x86_64-linux/lib/mold /usr/local/lib/ && \
+    rm -rf /tmp/mold-${MOLD_VERSION}-x86_64-linux && \
+    mold --version
+
+# Documentation, manual building & utility packages
+RUN apt-get install -y \
+      doxygen graphviz rsync zip libimage-exiftool-perl
+
+# Dart Sass — required by user manual build (find_program(SASS_EXECUTABLE "sass"))
+RUN SASS_VERSION=1.101.0 && \
+    wget -qO- "https://github.com/sass/dart-sass/releases/download/${SASS_VERSION}/dart-sass-${SASS_VERSION}-linux-x64.tar.gz" | \
+      tar xz -C /opt && \
+    ln -sf /opt/dart-sass/sass /usr/local/bin/sass && \
+    sass --version
+
+# TeX Live (full, all languages) — for PDF manual generation
+RUN apt-get install -y \
+      texlive-latex-extra texlive-fonts-recommended texlive-lang-all
+
 # Clean up to reduce image size
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -175,7 +202,7 @@ USER appuser
 WORKDIR /home/appuser
 
 # To build Zrythm:
-# cmake -B builddir_cmake -DZRYTHM_STRICT=ON -DZRYTHM_TESTS=ON -DZRYTHM_BENCHMARKS=ON -DFETCHCONTENT_TRY_FIND_PACKAGE_MODE=NEVER -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DZRYTHM_WITH_LIBDW=OFF -DZRYTHM_UNITY_BUILD=ON
-# cmake --build builddir_cmake --parallel
-# cmake --install builddir_cmake
-# /usr/local/bin/zrythm --version
+# conan install . -pr:h gcc_debug -pr:b gcc_release --build=missing
+# cmake --preset default
+# cmake --build conanbuild/Debug --parallel
+# QT_QPA_PLATFORM=offscreen conanbuild/Debug/products/bin/zrythm --version

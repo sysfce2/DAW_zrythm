@@ -45,22 +45,6 @@
         "miDebuggerPath": "/usr/bin/gdb",
         "environment": [
           {
-            "name": "ASAN_OPTIONS",
-            "value": "strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:halt_on_error=1:abort_on_error=1:detect_leaks=0:suppressions=${workspaceFolder}/tools/asan_suppressions.supp",
-          },
-          {
-            "name": "RTSAN_OPTIONS",
-            "value": "suppressions=${workspaceFolder}/tools/rtsan_suppressions.supp",
-          },
-          {
-            "name": "TSAN_OPTIONS",
-            "value": "suppressions=${workspaceFolder}/tools/tsan_suppressions.supp:ignore_noninstrumented_modules=1",
-          },
-          {
-            "name": "UBSAN_OPTIONS",
-            "value": "halt_on_error=1:abort_on_error=1"
-          },
-          {
             "name": "QT_QPA_PLATFORM",
             "value": "wayland",
           },
@@ -70,6 +54,10 @@
           {
             "description": "Enable pretty-printing for gdb (note this is not really compatible with natvis files according to vscode)",
             "text": "-enable-pretty-printing",
+          },
+          {
+            "description": "Source Conan runtime environment and apply sanitizer suppressions",
+            "text": "set exec-wrapper ${workspaceFolder}/tools/conanrun_wrapper.sh ${workspaceFolder} ${command:cmake.buildDirectory}"
           },
         ]
       },
@@ -148,14 +136,6 @@
           "value": "1",
         },
         {
-          "name": "ASAN_OPTIONS",
-          "value": "strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:halt_on_error=1:abort_on_error=1",
-        },
-        {
-          "name": "UBSAN_OPTIONS",
-          "value": "halt_on_error=1:abort_on_error=1"
-        },
-        {
           "name": "ZRYTHM_ENGINE_PATH",
           "value": "${config:cmake.buildDirectory}/src/engine/zrythm-engine",
         },
@@ -176,6 +156,13 @@
         // "--gtest_filter='*PassthroughProcessor*'",
       ],
       "miDebuggerArgs": "-ex \"handle SIGPIPE noprint nostop pass\"",
+      "setupCommands": [
+        {
+          "description": "Source Conan runtime environment and apply sanitizer suppressions",
+          "text": "set exec-wrapper ${workspaceFolder}/tools/conanrun_wrapper.sh ${workspaceFolder} ${command:cmake.buildDirectory}",
+          "ignoreFailures": true
+        }
+      ],
     },
     {
       "name": "Launch CMake target with GammaRay",
@@ -209,10 +196,6 @@
           "value": "1",
         },
         {
-          "name": "ASAN_OPTIONS",
-          "value": "check_initialization_order=1",
-        },
-        {
           "name": "QT_QPA_PLATFORM",
           "value": "wayland",
         },
@@ -226,6 +209,13 @@
         "/usr/lib/vst3/ToolBox.vst3",
       ],
       "miDebuggerArgs": "-ex \"handle SIGPIPE noprint nostop pass\"",
+      "setupCommands": [
+        {
+          "description": "Source Conan runtime environment and apply sanitizer suppressions",
+          "text": "set exec-wrapper ${workspaceFolder}/tools/conanrun_wrapper.sh ${workspaceFolder} ${command:cmake.buildDirectory}",
+          "ignoreFailures": true
+        }
+      ],
     },
     // {
     //     "name": "CTest Target",

@@ -7,7 +7,8 @@
 
 #include "gui/backend/zrythm_application.h"
 #include "utils/directory_manager.h"
-#include "utils/gtest_wrapper.h"
+
+#include <QProcessEnvironment>
 
 #include <scn/scan.h>
 

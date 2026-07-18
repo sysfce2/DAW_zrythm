@@ -148,12 +148,7 @@ TODO: explain contributors need to run clang-format
 
 ## Licensing
 For license headers, we use SPDX license
-identifiers. The comment style depends on the file
-type:
-
-    C++: // SPDX-License-Identifier: <SPDX License Expression>
-    scripts:  # SPDX-License-Identifier: <SPDX License Expression>
-    .rst:     .. SPDX-License-Identifier: <SPDX License Expression>
+identifiers.
 
 If you contributed significant (for copyright
 purposes) amounts of code in a file, you should

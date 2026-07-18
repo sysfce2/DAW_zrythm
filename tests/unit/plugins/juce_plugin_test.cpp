@@ -9,6 +9,7 @@
 #include "plugins/plugin_configuration.h"
 #include "plugins/plugin_descriptor.h"
 #include "utils/object_registry.h"
+#include "utils/qt.h"
 #include "utils/serialization.h"
 
 #include "helpers/scoped_juce_qapplication.h"
@@ -341,11 +342,11 @@ TEST_F (JucePluginTest, ParameterMapping)
   // Test parameter mapping
   EXPECT_EQ (plugin_->get_parameters ().size (), 3);
   EXPECT_EQ (
-    plugin_->get_parameters ()
-      .at (2)
-      .get_object_as<dsp::ProcessorParameter> ()
-      ->label ()
-      .toStdString (),
+    utils::to_std_string (
+      plugin_->get_parameters ()
+        .at (2)
+        .get_object_as<dsp::ProcessorParameter> ()
+        ->label ()),
     "Cutoff");
 }
 
@@ -637,7 +638,7 @@ TEST_F (JucePluginTest, AdvancedParameterTypes)
   for (const auto &param : params)
     {
       auto * p = param.get_object_as<dsp::ProcessorParameter> ();
-      auto   label = p->label ().toStdString ();
+      auto   label = utils::to_std_string (p->label ());
 
       if (label == "IntParam")
         {
@@ -903,7 +904,7 @@ TEST_F (JucePluginTest, JuceParameterStateSerialization)
   for (const auto &param : deserialized_params)
     {
       auto * p = param.get_object_as<dsp::ProcessorParameter> ();
-      auto   label = p->label ().toStdString ();
+      auto   label = utils::to_std_string (p->label ());
 
       if (label == "TestFloat")
         {

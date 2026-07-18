@@ -13,7 +13,6 @@
 #include "gui/backend/project_session.h"
 #include "gui/backend/zrythm_application.h"
 #include "utils/directory_manager.h"
-#include "utils/gtest_wrapper.h"
 #include "utils/io_utils.h"
 
 #include <QtConcurrentRun>
@@ -55,26 +54,25 @@ ProjectManager::init_templates ()
             utils::Utf8String::from_path (user_templates_dir));
         }
     }
-  if (!ZRYTHM_TESTING && !ZRYTHM_BENCHMARKING)
-    {
-      const auto system_templates_dir =
-        dir_mgr.get_dir (IDirectoryManager::DirectoryType::SYSTEM_TEMPLATES);
-      if (fs::is_directory (system_templates_dir))
-        {
-          try
-            {
-              auto files = utils::io::get_files_in_dir (system_templates_dir);
-              templates_.insert (
-                templates_.end (), files.begin (), files.end ());
-            }
-          catch (const ZrythmException &e)
-            {
-              z_warning (
-                "Failed to init system templates from {}",
-                utils::Utf8String::from_path (system_templates_dir));
-            }
-        }
-    }
+
+  {
+    const auto system_templates_dir =
+      dir_mgr.get_dir (IDirectoryManager::DirectoryType::SYSTEM_TEMPLATES);
+    if (fs::is_directory (system_templates_dir))
+      {
+        try
+          {
+            auto files = utils::io::get_files_in_dir (system_templates_dir);
+            templates_.insert (templates_.end (), files.begin (), files.end ());
+          }
+        catch (const ZrythmException &e)
+          {
+            z_warning (
+              "Failed to init system templates from {}",
+              utils::Utf8String::from_path (system_templates_dir));
+          }
+      }
+  }
 
   for (auto &tmpl : this->templates_)
     {

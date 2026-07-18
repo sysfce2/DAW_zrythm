@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "dsp/tempo_map_qml_adapter.h"
+#include "utils/qt.h"
 
 #include <QCoreApplication>
 #include <QSignalSpy>
@@ -261,7 +262,7 @@ TEST_F (TempoMapWrapperTest, MusicalPositionString)
     tempo_map_->tick_to_musical_position (units::ticks (testTick1));
   auto expectedStr = fmt::format (
     "{}.{}.{}.000", posDirect.bar, posDirect.beat, posDirect.sixteenth);
-  EXPECT_EQ (strWrapper.toStdString (), expectedStr);
+  EXPECT_EQ (utils::to_std_string (strWrapper), expectedStr);
 
   // Test position after some ticks
   const int64_t testTick2 = 481;
@@ -269,7 +270,7 @@ TEST_F (TempoMapWrapperTest, MusicalPositionString)
   posDirect = tempo_map_->tick_to_musical_position (units::ticks (testTick2));
   expectedStr = fmt::format (
     "{}.{}.{}.001", posDirect.bar, posDirect.beat, posDirect.sixteenth);
-  EXPECT_EQ (strWrapper.toStdString (), expectedStr);
+  EXPECT_EQ (utils::to_std_string (strWrapper), expectedStr);
 }
 
 // Test tick from musical position conversion

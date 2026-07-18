@@ -182,9 +182,9 @@ get_fader_val_from_amp (T amp)
       amp = 1.f + 1e-20f;
     }
   T fader =
-    std::powf (
+    std::pow (
       // note: don't use fast_log here - it causes weirdness in faders
-      (6.f * std::logf (amp)) + fader_coefficient1, 8.f)
+      (6.f * std::log (amp)) + fader_coefficient1, 8.f)
     / fader_coefficient2;
   return fader;
 }
@@ -198,8 +198,7 @@ static inline T
 get_amp_val_from_fader (T fader)
 {
   constexpr float val1 = 1.f / 6.f;
-  return std::powf (
-    2.f, (val1) * (-192.f + 198.f * std::powf (fader, 1.f / 8.f)));
+  return std::pow (2.f, (val1) * (-192.f + 198.f * std::pow (fader, 1.f / 8.f)));
 }
 
 /**
@@ -210,7 +209,7 @@ template <std::floating_point T>
 static inline T
 amp_to_dbfs (T amp)
 {
-  return 20.f * std::log10f (amp);
+  return 20.f * std::log10 (amp);
 }
 
 /**
@@ -241,7 +240,7 @@ template <std::floating_point T>
 static inline T
 dbfs_to_amp (T dbfs)
 {
-  return std::powf (10.f, (dbfs / 20.f));
+  return std::pow (10.f, (dbfs / 20.f));
 }
 
 /**
