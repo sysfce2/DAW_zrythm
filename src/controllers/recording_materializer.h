@@ -79,6 +79,17 @@ public:
       size_t                       lane_index)>
       midi_clip;
 
+    /**
+     * @brief Creates a ChordClip on a chord track (no lanes).
+     *
+     * Used as a fallback when @ref midi_clip returns nullopt (chord tracks
+     * have no lanes). May be unset for non-chord-track contexts.
+     */
+    std::function<ClipCreationResult (
+      structure::tracks::TrackUuid track_id,
+      units::sample_t              start_position)>
+      chord_clip;
+
     /** Creates a MidiNote inside a clip. */
     std::function<void (
       structure::arrangement::MidiClip &clip,
@@ -98,6 +109,18 @@ public:
       int                                                 controller,
       int                                                 value)>
       midi_control_event;
+
+    /**
+     * @brief Creates a ChordObject inside a ChordClip from a MIDI note number.
+     *
+     * The @p start_position is clip-relative (samples from the clip start).
+     * May be unset for non-chord-track contexts.
+     */
+    std::function<void (
+      structure::arrangement::ChordClip &clip,
+      units::sample_t                    start_position,
+      int                                note_number)>
+      chord_object;
   };
 
   explicit RecordingMaterializer (

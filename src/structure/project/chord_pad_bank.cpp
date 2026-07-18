@@ -208,7 +208,7 @@ void
 ChordPadBank::rebuild_playback_data ()
 {
   ChordPadPlaybackData data;
-  for (size_t i = 0; i < chords_.size () && i < 12; ++i)
+  for (size_t i = 0; i < chords_.size () && i < kTriggerablePadCount; ++i)
     {
       data.slots[i].has_chord = true;
       data.slots[i].pitches = chords_[i]->getMidiPitches ();
@@ -247,14 +247,16 @@ ChordPadBank::connect_chord_signal (int index)
 std::optional<dsp::ChordDescriptor::ChordPitches>
 ChordPadBank::get_pitches_for_note (midi_byte_t note_number) noexcept
 {
-  if (note_number < 60 || note_number >= 72)
+  if (
+    note_number < kBasePadNote
+    || note_number >= kBasePadNote + kTriggerablePadCount)
     return std::nullopt;
 
   decltype (playback_data_)::ScopedAccess<farbot::ThreadType::realtime> access{
     playback_data_
   };
 
-  const auto &slot = (*access).slots[note_number - 60];
+  const auto &slot = (*access).slots[note_number - kBasePadNote];
   if (!slot.has_chord)
     return std::nullopt;
 

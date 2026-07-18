@@ -221,6 +221,8 @@ ProjectSession::ProjectSession (
     auto * track = project_ptr->tracklist ()->get_track (track_id);
     if (track == nullptr)
       return std::nullopt;
+    if (track->lanes () == nullptr)
+      return std::nullopt;
     assert (!track->lanes ()->lanes ().empty ());
     const auto actual_lane_idx =
       std::max (lane_index, track->lanes ()->lanes ().size () - 1);
@@ -276,6 +278,31 @@ ProjectSession::ProjectSession (
           std::move (clip_ref), actual_lane_idx
         };
       },
+      .chord_clip =
+        [creator_ptr = QPointer<actions::ArrangerObjectCreator> (
+           arranger_object_creator_.get ()),
+         project_ptr = QPointer<structure::project::Project> (project_.get ())] (
+          structure::tracks::TrackUuid track_id, units::sample_t start_position)
+        -> controllers::RecordingMaterializer::ClipCreationResult {
+        if (creator_ptr.isNull () || project_ptr.isNull ())
+          return std::nullopt;
+        auto * track = project_ptr->tracklist ()->get_track (track_id);
+        if (
+          track == nullptr
+          || track->type () != structure::tracks::Track::Type::Chord)
+          return std::nullopt;
+        auto * chord_track =
+          qobject_cast<structure::tracks::ChordTrack *> (track);
+        if (chord_track == nullptr)
+          return std::nullopt;
+        const auto start_ticks = project_ptr->tempo_map ().samples_to_tick (
+          units::precise_sample_t (start_position));
+        auto clip_ref = creator_ptr->add_chord_clip_for_recording (
+          *chord_track, start_ticks.asQuantity ());
+        return controllers::RecordingMaterializer::CreatedClip{
+          std::move (clip_ref), 0
+        };
+      },
       .midi_note =
         [creator_ptr = QPointer<actions::ArrangerObjectCreator> (
            arranger_object_creator_.get ()),
@@ -311,6 +338,33 @@ ProjectSession::ProjectSession (
             units::precise_sample_t (position));
           creator_ptr->add_midi_control_event (
             clip, ticks.asQuantity (), type, channel, controller, value);
+        },
+      .chord_object =
+        [creator_ptr = QPointer<actions::ArrangerObjectCreator> (
+           arranger_object_creator_.get ()),
+         project_ptr = QPointer<structure::project::Project> (project_.get ()),
+         pad_bank_ptr = QPointer<structure::project::ChordPadBank> (
+           ui_state_->chordPadBank ())] (
+          structure::arrangement::ChordClip &clip,
+          units::sample_t start_position, int note_number) {
+          if (
+            creator_ptr.isNull () || project_ptr.isNull ()
+            || pad_bank_ptr.isNull ())
+            return;
+          using ChordPadBank = structure::project::ChordPadBank;
+          if (
+            note_number < ChordPadBank::kBasePadNote
+            || note_number
+                 >= ChordPadBank::kBasePadNote + ChordPadBank::kTriggerablePadCount)
+            return;
+          auto * descriptor =
+            pad_bank_ptr->chordAt (note_number - ChordPadBank::kBasePadNote);
+          if (descriptor == nullptr)
+            return;
+          const auto ticks = project_ptr->tempo_map ().samples_to_tick (
+            units::precise_sample_t (start_position));
+          creator_ptr->addChordObjectFromDescriptor (
+            &clip, ticks.asDouble (), descriptor);
         },
     },
     [&settings = app_settings_] () {

@@ -36,6 +36,18 @@ class ChordPadBank : public QAbstractListModel
   QML_UNCREATABLE ("")
 
 public:
+  /** MIDI note number of the first triggerable chord pad (C3). */
+  static constexpr midi_byte_t kBasePadNote = 60;
+  /**
+   * @brief Number of chord pads triggerable via MIDI notes.
+   *
+   * The chord list itself (@ref chords_) is variable-length; this is the
+   * fixed size of the pre-computed playback slot array and the range of
+   * MIDI notes ([@ref kBasePadNote, @ref kBasePadNote + @ref
+   * kTriggerablePadCount)) that map onto it.
+   */
+  static constexpr int kTriggerablePadCount = 12;
+
   enum Roles
   {
     ChordDescriptorRole = Qt::UserRole + 1,
@@ -118,7 +130,7 @@ private:
       bool                               has_chord = false;
       dsp::ChordDescriptor::ChordPitches pitches;
     };
-    std::array<Slot, 12> slots{};
+    std::array<Slot, kTriggerablePadCount> slots{};
   };
 
   void rebuild_playback_data ();

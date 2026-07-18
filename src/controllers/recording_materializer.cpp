@@ -25,6 +25,9 @@ RecordingMaterializer::RecordingMaterializer (
       undo_stack_ (&undo_stack), creators_ (std::move (creators)),
       recording_mode_provider_ (std::move (recording_mode_provider))
 {
+  assert (
+    (creators_.chord_clip && creators_.chord_object)
+    || (!creators_.chord_clip && !creators_.chord_object));
   QObject::connect (
     &recording_coordinator_, &RecordingCoordinator::audioDataReady, this,
     &RecordingMaterializer::on_audio_data_ready);
@@ -229,6 +232,10 @@ RecordingMaterializer::ensure_midi_clip (
 
   auto result =
     creators_.midi_clip (track_id, start_position, state.current_lane_index);
+  if (!result.has_value () && creators_.chord_clip)
+    {
+      result = creators_.chord_clip (track_id, start_position);
+    }
   if (!result.has_value ())
     return false;
   state.current_lane_index = result->actual_lane_index;
@@ -284,9 +291,67 @@ RecordingMaterializer::on_midi_data_ready (
           handle_discontinuity (state);
         }
 
-      ensure_midi_clip (state, track_id, packet.timeline_position);
+      if (!ensure_midi_clip (state, track_id, packet.timeline_position))
+        {
+          z_warning (
+            "Failed to create clip for track {} at position {} — dropping "
+            "packet",
+            track_id, packet.timeline_position);
+          continue;
+        }
 
       const auto packet_end = packet.timeline_position + packet.nframes;
+
+      if (
+        state.current_clip.has_value () && creators_.chord_object
+        && state.current_clip->get_object_as<structure::arrangement::ChordClip> ()
+             != nullptr)
+        {
+          auto * chord_clip = state.current_clip->get_object_as<
+            structure::arrangement::ChordClip> ();
+          const auto clip_start =
+            chord_clip->get_tempo_map ().tick_to_samples_rounded (
+              chord_clip->position ()->asTick ());
+          for (const auto &ev : packet.midi_events)
+            {
+              const auto d = ev.data ();
+              if (d.empty ())
+                continue;
+              const auto status = d[0];
+              const auto type =
+                static_cast<uint8_t> (status & utils::midi::MIDI_STATUS_MASK);
+              const auto d1 =
+                d.size () > 1
+                  ? static_cast<uint8_t> (d[1] & utils::midi::MIDI_DATA_MASK)
+                  : uint8_t{ 0 };
+              const auto d2 =
+                d.size () > 2
+                  ? static_cast<uint8_t> (d[2] & utils::midi::MIDI_DATA_MASK)
+                  : uint8_t{ 0 };
+              if (type == utils::midi::MIDI_CH1_NOTE_ON && d2 > 0)
+                {
+                  const auto event_sample_pos =
+                    packet.timeline_position
+                    + units::samples (
+                      static_cast<int64_t> (ev.time ().in (units::samples)));
+                  creators_.chord_object (
+                    *chord_clip, event_sample_pos - clip_start, d1);
+                }
+            }
+          const auto length_tick =
+            chord_clip->get_tempo_map ().samples_to_tick (packet_end)
+            - chord_clip->position ()->asTick ();
+          if (packet_end < clip_start)
+            {
+              throw std::runtime_error (
+                fmt::format (
+                  "Computed negative chord clip length: {}",
+                  packet_end - clip_start));
+            }
+          chord_clip->length ()->setTicks (length_tick.asDouble ());
+          state.last_end_position = packet_end;
+          continue;
+        }
 
       const auto get_midi_clip_and_offset = [&] (units::sample_t pos)
         -> std::optional<

@@ -105,6 +105,11 @@ public:
     structure::tracks::TrackLane &lane,
     units::precise_tick_t         start_ticks);
 
+  structure::arrangement::ArrangerObjectUuidReference
+  add_chord_clip_for_recording (
+    structure::tracks::ChordTrack &chord_track,
+    units::precise_tick_t          start_ticks);
+
   structure::arrangement::MidiControlEvent * add_midi_control_event (
     structure::arrangement::MidiClip                   &clip,
     units::precise_tick_t                               startTicks,

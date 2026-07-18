@@ -46,6 +46,13 @@ protected:
     structure::arrangement::MidiClip *                  clip;
   };
 
+  struct ChordObjectCreation
+  {
+    units::sample_t                     position;
+    int                                 note_number;
+    structure::arrangement::ChordClip * clip;
+  };
+
   void SetUp () override
   {
     app_ = std::make_unique<zrythm::test_helpers::ScopedQCoreApplication> ();
@@ -65,6 +72,7 @@ protected:
     source_obj_refs_.clear ();
     clip_refs_.clear ();
     midi_clip_refs_.clear ();
+    chord_clip_refs_.clear ();
     tempo_map_.reset ();
     tempo_map_wrapper_.reset ();
     app_.reset ();
@@ -150,6 +158,8 @@ protected:
             std::move (clip_ref), lane_index
           };
         },
+        .chord_clip = [] (TrackUuid, units::sample_t)
+          -> RecordingMaterializer::ClipCreationResult { return std::nullopt; },
         .midi_note =
           [this] (
             structure::arrangement::MidiClip &clip, units::sample_t start_position,
@@ -164,6 +174,56 @@ protected:
             int channel, int controller, int value) {
             midi_control_event_creations_.push_back (
               { position, type, channel, controller, value, &clip });
+          },
+        .chord_object =
+          [] (structure::arrangement::ChordClip &, units::sample_t, int) { },
+      },
+      [mode] () { return mode; });
+  }
+
+  void create_chord_materializer (
+    controllers::recording::RecordingMode mode =
+      controllers::recording::RecordingMode::Takes)
+  {
+    chord_clip_create_count_ = 0;
+    chord_object_creations_.clear ();
+
+    materializer_ = std::make_unique<RecordingMaterializer> (
+      *coordinator_, *undo_stack_,
+      RecordingMaterializer::ArrangerObjectCreators{
+        .audio_clip =
+          [] (TrackUuid, units::sample_t, const utils::audio::AudioBuffer &, size_t)
+          -> RecordingMaterializer::ClipCreationResult { return std::nullopt; },
+        .midi_clip = [] (TrackUuid, units::sample_t, size_t)
+          -> RecordingMaterializer::ClipCreationResult { return std::nullopt; },
+        .chord_clip = [this] (TrackUuid track_id, units::sample_t start_position)
+          -> RecordingMaterializer::ClipCreationResult {
+          chord_clip_create_count_++;
+          auto clip_ref =
+            utils::create_object<structure::arrangement::ChordClip> (
+              registry_, *tempo_map_wrapper_, registry_);
+          clip_ref.get ()->position ()->setTicks (
+            tempo_map_
+              ->samples_to_tick (
+                units::samples (start_position.in (units::samples)))
+              .asDouble ());
+          chord_clip_refs_.push_back (clip_ref);
+          return RecordingMaterializer::CreatedClip{ std::move (clip_ref), 0 };
+        },
+        .midi_note =
+          [] (
+            structure::arrangement::MidiClip &, units::sample_t,
+            units::sample_t, int, int, int) { },
+        .midi_control_event =
+          [] (
+            structure::arrangement::MidiClip &, units::sample_t,
+            structure::arrangement::MidiControlEvent::EventType, int, int, int) {
+          },
+        .chord_object =
+          [this] (
+            structure::arrangement::ChordClip &clip, units::sample_t position,
+            int note_number) {
+            chord_object_creations_.push_back ({ position, note_number, &clip });
           },
       },
       [mode] () { return mode; });
@@ -244,6 +304,11 @@ protected:
   size_t                                last_midi_lane_index_ = 0;
   std::vector<MidiNoteCreation>         midi_note_creations_;
   std::vector<MidiControlEventCreation> midi_control_event_creations_;
+
+  int chord_clip_create_count_ = 0;
+  std::vector<structure::arrangement::ArrangerObjectUuidReference>
+                                   chord_clip_refs_;
+  std::vector<ChordObjectCreation> chord_object_creations_;
 };
 
 TEST_F (RecordingMaterializerTest, TransportRecordingFalseDiscardsData)
@@ -435,6 +500,8 @@ TEST_F (RecordingMaterializerTest, NullClipCreatorDoesNotCorruptState)
         -> RecordingMaterializer::ClipCreationResult { return std::nullopt; },
       .midi_clip = [] (TrackUuid, units::sample_t, size_t)
         -> RecordingMaterializer::ClipCreationResult { return std::nullopt; },
+      .chord_clip = [] (TrackUuid, units::sample_t)
+        -> RecordingMaterializer::ClipCreationResult { return std::nullopt; },
       .midi_note =
         [] (
           structure::arrangement::MidiClip &, units::sample_t, units::sample_t,
@@ -443,6 +510,8 @@ TEST_F (RecordingMaterializerTest, NullClipCreatorDoesNotCorruptState)
         [] (
           structure::arrangement::MidiClip &, units::sample_t,
           structure::arrangement::MidiControlEvent::EventType, int, int, int) { },
+      .chord_object =
+        [] (structure::arrangement::ChordClip &, units::sample_t, int) { },
     },
     [] () { return controllers::recording::RecordingMode::Takes; });
 
@@ -1537,6 +1606,191 @@ TEST_F (
   EXPECT_EQ (midi_note_creations_[1].end_position, units::samples (256 + 150))
     << "Second note ends at second note-off";
   EXPECT_EQ (midi_clip_create_count_, 1);
+}
+
+// ============================================================================
+// Chord track recording tests
+// ============================================================================
+
+TEST_F (RecordingMaterializerTest, ChordNoteOnCreatesChordObject)
+{
+  create_chord_materializer ();
+
+  auto track_id = TrackUuid (QUuid::createUuid ());
+  coordinator_->arm_track (track_id, units::samples (256), SessionType::Midi);
+
+  auto events = dsp::MidiEventBuffer::make_reserved ();
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 60, 100, units::samples (10u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  write_midi_and_drain (track_id, units::samples (0), true, events);
+
+  EXPECT_EQ (chord_clip_create_count_, 1) << "ChordClip created on first packet";
+  ASSERT_EQ (chord_object_creations_.size (), 1u);
+  EXPECT_EQ (chord_object_creations_[0].note_number, 60);
+  EXPECT_EQ (chord_object_creations_[0].position, units::samples (10));
+}
+
+TEST_F (RecordingMaterializerTest, ChordNoteOffIgnored)
+{
+  create_chord_materializer ();
+
+  auto track_id = TrackUuid (QUuid::createUuid ());
+  coordinator_->arm_track (track_id, units::samples (256), SessionType::Midi);
+
+  auto events = dsp::MidiEventBuffer::make_reserved ();
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 60, 100, units::samples (0u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_off (0, 60, units::samples (100u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  write_midi_and_drain (track_id, units::samples (0), true, events);
+
+  ASSERT_EQ (chord_object_creations_.size (), 1u)
+    << "Only the note-on should create a ChordObject";
+}
+
+TEST_F (RecordingMaterializerTest, ChordCCIgnored)
+{
+  create_chord_materializer ();
+
+  auto track_id = TrackUuid (QUuid::createUuid ());
+  coordinator_->arm_track (track_id, units::samples (256), SessionType::Midi);
+
+  auto events = dsp::MidiEventBuffer::make_reserved ();
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 62, 90, units::samples (0u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  {
+    const auto _ev =
+      dsp::midi_event::make_control_change (0, 1, 64, units::samples (50u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  write_midi_and_drain (track_id, units::samples (0), true, events);
+
+  ASSERT_EQ (chord_object_creations_.size (), 1u)
+    << "CC events should be ignored for chord tracks";
+}
+
+TEST_F (RecordingMaterializerTest, ChordMultipleNoteOnsCreateMultipleObjects)
+{
+  create_chord_materializer ();
+
+  auto track_id = TrackUuid (QUuid::createUuid ());
+  coordinator_->arm_track (track_id, units::samples (256), SessionType::Midi);
+
+  auto events = dsp::MidiEventBuffer::make_reserved ();
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 60, 100, units::samples (0u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 64, 90, units::samples (50u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 67, 80, units::samples (100u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  write_midi_and_drain (track_id, units::samples (0), true, events);
+
+  ASSERT_EQ (chord_object_creations_.size (), 3u);
+  EXPECT_EQ (chord_object_creations_[0].note_number, 60);
+  EXPECT_EQ (chord_object_creations_[1].note_number, 64);
+  EXPECT_EQ (chord_object_creations_[2].note_number, 67);
+}
+
+TEST_F (RecordingMaterializerTest, ChordClipCreatedOnFirstPacketEvenWithNoEvents)
+{
+  create_chord_materializer ();
+
+  auto track_id = TrackUuid (QUuid::createUuid ());
+  coordinator_->arm_track (track_id, units::samples (256), SessionType::Midi);
+
+  auto empty_events = dsp::MidiEventBuffer::make_reserved ();
+  write_midi_and_drain (track_id, units::samples (0), true, empty_events);
+
+  EXPECT_EQ (chord_clip_create_count_, 1)
+    << "ChordClip should be created on first packet, even with no events";
+  EXPECT_TRUE (chord_object_creations_.empty ());
+
+  auto * clip =
+    chord_clip_refs_[0].get_object_as<structure::arrangement::ChordClip> ();
+  ASSERT_NE (clip, nullptr);
+  EXPECT_DOUBLE_EQ (
+    clip->length ()->ticks (),
+    tempo_map_->samples_to_tick (units::samples (256.0)).asDouble ());
+}
+
+TEST_F (RecordingMaterializerTest, ChordClipExtendsWithContiguousPackets)
+{
+  create_chord_materializer ();
+
+  auto track_id = TrackUuid (QUuid::createUuid ());
+  coordinator_->arm_track (track_id, units::samples (256), SessionType::Midi);
+
+  auto events = dsp::MidiEventBuffer::make_reserved ();
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 60, 100, units::samples (0u));
+    events.push_back (_ev.time_, _ev.data ());
+  }
+  write_midi_and_drain (track_id, units::samples (0), true, events);
+  EXPECT_EQ (chord_clip_create_count_, 1);
+
+  auto empty = dsp::MidiEventBuffer::make_reserved ();
+  write_midi_and_drain (track_id, units::samples (256), true, empty);
+  EXPECT_EQ (chord_clip_create_count_, 1) << "Contiguous packet reuses clip";
+
+  auto * clip =
+    chord_clip_refs_[0].get_object_as<structure::arrangement::ChordClip> ();
+  ASSERT_NE (clip, nullptr);
+  EXPECT_DOUBLE_EQ (
+    clip->length ()->ticks (),
+    tempo_map_->samples_to_tick (units::samples (512.0)).asDouble ())
+    << "Clip should extend to cover second packet";
+}
+
+TEST_F (RecordingMaterializerTest, ChordDiscontinuityCreatesNewClip)
+{
+  create_chord_materializer ();
+
+  auto track_id = TrackUuid (QUuid::createUuid ());
+  coordinator_->arm_track (track_id, units::samples (256), SessionType::Midi);
+
+  auto events1 = dsp::MidiEventBuffer::make_reserved ();
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 60, 100, units::samples (0u));
+    events1.push_back (_ev.time_, _ev.data ());
+  }
+  write_midi_and_drain (track_id, units::samples (0), true, events1);
+  EXPECT_EQ (chord_clip_create_count_, 1);
+
+  auto events2 = dsp::MidiEventBuffer::make_reserved ();
+  {
+    const auto _ev =
+      dsp::midi_event::make_note_on (0, 64, 90, units::samples (0u));
+    events2.push_back (_ev.time_, _ev.data ());
+  }
+  write_midi_and_drain (track_id, units::samples (1000), true, events2);
+  EXPECT_EQ (chord_clip_create_count_, 2) << "Gap should create new ChordClip";
+
+  ASSERT_EQ (chord_object_creations_.size (), 2u);
+  EXPECT_NE (chord_object_creations_[0].clip, chord_object_creations_[1].clip)
+    << "ChordObjects should be in different clips";
 }
 
 }

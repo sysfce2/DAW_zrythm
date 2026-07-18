@@ -412,6 +412,25 @@ ArrangerObjectCreator::add_midi_clip_for_recording (
   return clip_ref;
 }
 
+structure::arrangement::ArrangerObjectUuidReference
+ArrangerObjectCreator::add_chord_clip_for_recording (
+  structure::tracks::ChordTrack &chord_track,
+  units::precise_tick_t          start_ticks)
+{
+  auto clip_ref =
+    arranger_object_factory_.get_builder<structure::arrangement::ChordClip> ()
+      .with_start_ticks (start_ticks)
+      .build_in_registry ();
+  auto * chord_clip =
+    clip_ref.get_object_as<structure::arrangement::ChordClip> ();
+  chord_clip->name ()->setName (
+    chord_track.generate_name_for_clip (*chord_clip));
+  undo_stack_.push (
+    new commands::AddArrangerObjectCommand<structure::arrangement::ChordClip> (
+      chord_track, clip_ref));
+  return clip_ref;
+}
+
 structure::arrangement::MidiControlEvent *
 ArrangerObjectCreator::add_midi_control_event (
   structure::arrangement::MidiClip                   &clip,
