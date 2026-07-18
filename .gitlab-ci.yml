@@ -82,6 +82,10 @@ stages:
     - cmake --preset default -DZRYTHM_UNITY_BUILD=OFF -DZRYTHM_BUNDLED_PLUGINS=${WITH_BUNDLED_PLUGINS}
     - cmake --build conanbuild/Debug --parallel
     - source conanbuild/Debug/generators/conanrun.sh && ctest --test-dir conanbuild/Debug --rerun-failed --output-on-failure
+    - >-
+      if [ "${CREATE_APPIMAGE}" = "ON" ]; then
+        APPIMAGE_EXTRACT_AND_RUN=1 cpack -G AppImage -C Debug --config conanbuild/Debug/CPackConfig.cmake -B package-${SANITIZER_OPTION}-debug;
+      fi
 
 .mac-arm-template:
   tags:
@@ -106,6 +110,19 @@ stages:
   before_script:
     - *windows-enable-vs-env
     - *windows-activate-venv
+
+# Windows template with full environment setup (venv, conan, recipes).
+# Use for jobs that don't depend on configure:windows artifacts.
+.windows-with-conan:
+  extends: .windows-template
+  before_script:
+    - *windows-enable-vs-env
+    - python -m venv venv
+    - *windows-activate-venv
+    - python -m pip install -r requirements.txt
+    - conan config install conan
+    - $r = conan remote list 2>$null; if (-not ($r -match 'conan-local-index')) { conan remote add conan-local-index ext/conan-center-index }
+    - python tools/export_conan_recipes.py
 
 default:
   cache:
@@ -185,18 +202,10 @@ configure:mac-arm:
     expire_in: 1 day
 
 configure:windows:
-  extends: .windows-template
+  extends: .windows-with-conan
   stage: setup
   variables:
     GIT_DEPTH: 0 # Fetch full history
-  before_script:
-    - *windows-enable-vs-env
-    - python -m venv venv
-    - *windows-activate-venv
-    - python -m pip install -r requirements.txt
-    - conan config install conan
-    - $r = conan remote list 2>$null; if (-not ($r -match 'conan-local-index')) { conan remote add conan-local-index ext/conan-center-index }
-    - python tools/export_conan_recipes.py
   script:
     - conan install . -pr:h ${env:HOST_PROFILE} -pr:b msvc_release --build=missing --lockfile=conan.lock
     - cmake --preset default -DZRYTHM_WITH_ASIO=ON
@@ -292,9 +301,19 @@ check:clang-tidy:
       -path conanbuild/Debug -config-file .clang-tidy
       -use-color
 
-check:sanitizer-asan-ubsan:
+build:sanitizer-asan-ubsan:gnu-linux:
   extends: .sanitizer-template
-  # uses defaults: clang_debug + address_undefined
+  stage: build
+  variables:
+    CREATE_APPIMAGE: "ON"
+  artifacts:
+    paths:
+      - package-${SANITIZER_OPTION}-debug/*.AppImage*
+      - conanbuild/Debug/test_results/*.xml
+    when: always
+    expire_in: "1 day"
+    reports:
+      junit: conanbuild/Debug/test_results/*.xml
 
 check:sanitizer-thread:
   extends: .sanitizer-template
@@ -308,6 +327,56 @@ check:sanitizer-realtime:
   extends: .sanitizer-template
   variables:
     SANITIZER_OPTION: "realtime"
+
+build:sanitizer-asan-ubsan:mac-arm:
+  extends: .mac-arm-template
+  stage: build
+  timeout: 2h
+  needs: []
+  variables:
+    HOST_PROFILE: "appleclang_debug"
+  script:
+    - conan install . -pr:h ${HOST_PROFILE} -pr:b appleclang_build -o sanitizer=address_undefined --build=missing --lockfile=conan.lock
+    - cmake --preset default -DZRYTHM_UNITY_BUILD=OFF
+    - cmake --build conanbuild/Debug --parallel 4
+    - source conanbuild/Debug/generators/conanrun.sh && ctest --test-dir conanbuild/Debug --rerun-failed --output-on-failure
+    - cpack -G "DragNDrop" -C Debug --config conanbuild/Debug/CPackConfig.cmake -B package-asan-ubsan-debug
+    - >-
+      scripts/mac_codesign_dmg_for_debug.sh "package-asan-ubsan-debug"/*.dmg "Developer ID Application: Alexandros Theodotou ($APPLE_NOTARIZATION_TEAM_ID)"
+  artifacts:
+    paths:
+      - package-asan-ubsan-debug/*.dmg*
+      - conanbuild/Debug/test_results/*.xml
+    when: always
+    expire_in: "1 day"
+    reports:
+      junit: conanbuild/Debug/test_results/*.xml
+
+build:sanitizer-asan:windows:
+  extends: .windows-with-conan
+  stage: build
+  timeout: 3h
+  needs: []
+  variables:
+    HOST_PROFILE: "msvc_debug"
+  script:
+    - conan install . -pr:h ${env:HOST_PROFILE} -pr:b msvc_release -o sanitizer=address --build=missing --lockfile=conan.lock
+    - cmake --preset default
+    - cmake --build "conanbuild/Debug" --config Debug --parallel
+    - if (! $?) { exit 1 }
+    - ctest --test-dir "conanbuild/Debug" -C Debug --rerun-failed --output-on-failure
+    - $shortPackageDir = "C:\tmp\package-asan-debug"
+    - if (Test-Path $shortPackageDir) { Remove-Item -Recurse -Force $shortPackageDir }
+    - New-Item -ItemType Directory -Path $shortPackageDir -Force
+    - cpack -G INNOSETUP -C Debug --config "conanbuild/Debug/CPackConfig.cmake" -B $shortPackageDir; if (-not $?) { Get-Content "$shortPackageDir\_CPack_Packages\win64\INNOSETUP\ISCCOutput.log"; exit 1 }
+    - if (Test-Path "package-asan-debug") { Remove-Item -Recurse -Force "package-asan-debug" }
+    - New-Item -ItemType Directory -Path "package-asan-debug" -Force
+    - Move-Item "$shortPackageDir\*.exe*" "package-asan-debug\"
+  artifacts:
+    paths:
+      - package-asan-debug/*.exe*
+    when: on_success
+    expire_in: "1 day"
 
 check:build-without-pch:
   extends: .gnu-linux-template
@@ -343,7 +412,6 @@ build:gnu/linux:
       ctest --test-dir conanbuild/${BUILD_TYPE} --parallel $(($(nproc) / 2)) --test-load $(($(nproc) / 2))
       --overwrite MemoryCheckCommandOptions="--undef-value-errors=no --exit-on-first-error=yes --error-exitcode=1"
       -T memcheck -E "(appstream-util-validate-appdata|zrythm_gui_qml_unit_tests)" --rerun-failed --output-on-failure
-    - cpack -G TXZ -C ${BUILD_TYPE} --config conanbuild/${BUILD_TYPE}/CPackConfig.cmake -B package-${BUILD_TYPE}
     - APPIMAGE_EXTRACT_AND_RUN=1 cpack -G AppImage -C ${BUILD_TYPE} --config conanbuild/${BUILD_TYPE}/CPackConfig.cmake -B package-${BUILD_TYPE}
   parallel:
     matrix:
@@ -354,7 +422,6 @@ build:gnu/linux:
   artifacts:
     paths:
       - conanbuild/${BUILD_TYPE}/version.env
-      - package-${BUILD_TYPE}/*.tar.xz*
       - package-${BUILD_TYPE}/*.AppImage*
       - conanbuild/${BUILD_TYPE}/test_results/*.xml
     when: always # Not ideal, see GitLab.com #18744
@@ -498,11 +565,6 @@ deploy:installers:
     - macArtifact=$(find package-Release -name "*.dmg" | head -n 1)
     - if [ -n "$macArtifact" ]; then
       python3 scripts/deploy_file_to_s3.py --prefix "packages/macos-universal" "$macArtifact";
-      fi
-    # Deploy Linux tarball
-    - gnuLinuxArtifact=$(find package-Release -name "*.tar.xz" | head -n 1)
-    - if [ -n "$gnuLinuxArtifact" ]; then
-      python3 scripts/deploy_file_to_s3.py --prefix "packages/gnu-linux-cpack" "$gnuLinuxArtifact";
       fi
     # Deploy Linux AppImage
     - gnuLinuxAppImageArtifact=$(find package-Release -name "*.AppImage" | head -n 1)

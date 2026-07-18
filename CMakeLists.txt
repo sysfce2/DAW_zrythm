@@ -823,6 +823,9 @@ enable_sanitizers(_sanitizers_lib
 )
 add_library(zrythm::sanitizers ALIAS _sanitizers_lib)
 
+# Apply sanitizers to all Zrythm targets (static libs + exe + tests), not just the exe
+target_link_libraries(_zrythm_all_compile_options INTERFACE zrythm::sanitizers)
+
 ##############################################################
 # More dependencies
 ##############################################################
@@ -1402,9 +1405,6 @@ else()
 endif()
 
 # -- Generator-specific options --
-
-# Archive generator (GNU/Linux)
-set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
 
 # AppImage generator (GNU/Linux)
 set(CPACK_APPIMAGE_DESKTOP_FILE "org.zrythm.Zrythm.desktop")

@@ -21,6 +21,17 @@ repos:
     language: system
     types_or: [c++, c]
     pass_filenames: true
+  - id: gitlab-ci-lint
+    name: gitlab-ci-lint
+    description: >-
+      Validate .gitlab-ci.yml against the GitLab CI schema.
+      Requires glab auth for gitlab.zrythm.org.
+    entry: >-
+      glab ci lint --dry-run --include-jobs
+      -R https://gitlab.zrythm.org/zrythm/zrythm
+    language: system
+    pass_filenames: false
+    files: ^\.gitlab-ci\.yml$
 - repo: https://github.com/fsfe/reuse-tool
   rev: v5.1.1
   hooks:
