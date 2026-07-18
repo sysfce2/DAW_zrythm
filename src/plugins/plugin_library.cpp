@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "plugins/plugin_library.h"
+#include "utils/logger.h"
 
 #include <QLibrary>
 #include <QtSystemDetection>

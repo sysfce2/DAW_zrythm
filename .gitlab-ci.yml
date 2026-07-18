@@ -352,31 +352,36 @@ build:sanitizer-asan-ubsan:mac-arm:
     reports:
       junit: conanbuild/Debug/test_results/*.xml
 
-build:sanitizer-asan:windows:
-  extends: .windows-with-conan
-  stage: build
-  timeout: 3h
-  needs: []
-  variables:
-    HOST_PROFILE: "msvc_debug"
-  script:
-    - conan install . -pr:h ${env:HOST_PROFILE} -pr:b msvc_release -o sanitizer=address --build=missing --lockfile=conan.lock
-    - cmake --preset default
-    - cmake --build "conanbuild/Debug" --config Debug --parallel
-    - if (! $?) { exit 1 }
-    - ctest --test-dir "conanbuild/Debug" -C Debug --rerun-failed --output-on-failure
-    - $shortPackageDir = "C:\tmp\package-asan-debug"
-    - if (Test-Path $shortPackageDir) { Remove-Item -Recurse -Force $shortPackageDir }
-    - New-Item -ItemType Directory -Path $shortPackageDir -Force
-    - cpack -G INNOSETUP -C Debug --config "conanbuild/Debug/CPackConfig.cmake" -B $shortPackageDir; if (-not $?) { Get-Content "$shortPackageDir\_CPack_Packages\win64\INNOSETUP\ISCCOutput.log"; exit 1 }
-    - if (Test-Path "package-asan-debug") { Remove-Item -Recurse -Force "package-asan-debug" }
-    - New-Item -ItemType Directory -Path "package-asan-debug" -Force
-    - Move-Item "$shortPackageDir\*.exe*" "package-asan-debug\"
-  artifacts:
-    paths:
-      - package-asan-debug/*.exe*
-    when: on_success
-    expire_in: "1 day"
+# Disabled: MSVC /fsanitize=address sets `annotate_optional` on every object and
+# the linker hard-enforces consistency (LNK2038) across all objects in a binary.
+# The CMake-level sanitizer (-o sanitizer=address) only instruments Zrythm
+# targets, so static C++ Conan deps (fmt, spdlog, etc.) cause mismatches.
+# Re-enable by switching to profile-level ASan (msvc_asan) or shared deps.
+# build:sanitizer-asan:windows:
+#   extends: .windows-with-conan
+#   stage: build
+#   timeout: 3h
+#   needs: []
+#   variables:
+#     HOST_PROFILE: "msvc_debug"
+#   script:
+#     - conan install . -pr:h ${env:HOST_PROFILE} -pr:b msvc_release -o sanitizer=address --build=missing --lockfile=conan.lock
+#     - cmake --preset default
+#     - cmake --build "conanbuild/Debug" --config Debug --parallel
+#     - if (! $?) { exit 1 }
+#     - ctest --test-dir "conanbuild/Debug" -C Debug --rerun-failed --output-on-failure
+#     - $shortPackageDir = "C:\tmp\package-asan-debug"
+#     - if (Test-Path $shortPackageDir) { Remove-Item -Recurse -Force $shortPackageDir }
+#     - New-Item -ItemType Directory -Path $shortPackageDir -Force
+#     - cpack -G INNOSETUP -C Debug --config "conanbuild/Debug/CPackConfig.cmake" -B $shortPackageDir; if (-not $?) { Get-Content "$shortPackageDir\_CPack_Packages\win64\INNOSETUP\ISCCOutput.log"; exit 1 }
+#     - if (Test-Path "package-asan-debug") { Remove-Item -Recurse -Force "package-asan-debug" }
+#     - New-Item -ItemType Directory -Path "package-asan-debug" -Force
+#     - Move-Item "$shortPackageDir\*.exe*" "package-asan-debug\"
+#   artifacts:
+#     paths:
+#       - package-asan-debug/*.exe*
+#     when: on_success
+#     expire_in: "1 day"
 
 check:build-without-pch:
   extends: .gnu-linux-template
