@@ -163,19 +163,7 @@ JucePlugin::initialize_juce_plugin_async (bool generateNewPluginPortsAndParams)
           // existing Zrythm params to JUCE params instead of creating new ones.
           create_parameters_from_juce_plugin ();
 
-          if (generateNewPluginPortsAndParams)
-            {
-              // Fresh plugin: sync JUCE's current values (after
-              // setStateInformation) to Zrythm params directly — we're on the
-              // message thread.
-              for (const auto &mapping : parameter_mappings_)
-                {
-                  if (mapping.juce_param && mapping.zrythm_param)
-                    mapping.zrythm_param->setBaseValue (
-                      mapping.juce_param->getValue ());
-                }
-            }
-          else
+          if (!generateNewPluginPortsAndParams)
             {
               // Deserialization: the state blob is the authoritative source.
               // Read back JUCE parameter values (which reflect the loaded

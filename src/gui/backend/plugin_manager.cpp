@@ -7,6 +7,7 @@
 #include "gui/backend/plugin_manager.h"
 #include "gui/backend/plugin_protocol_paths.h"
 #include "plugins/CLAPPluginFormat.h"
+#include "plugins/faust/faust_registry.h"
 #include "plugins/out_of_process_scanner.h"
 #include "utils/io_utils.h"
 #include "utils/logger.h"
@@ -39,6 +40,29 @@ PluginManager::PluginManager (
     std::make_unique<::zrythm::plugins::discovery::OutOfProcessPluginScanner> ());
   scanner_ = std::make_unique<zrythm::plugins::PluginScanManager> (
     known_plugin_list_, format_manager_, plugin_paths_provider);
+
+  add_internal_plugins_to_known_list ();
+}
+
+void
+PluginManager::add_internal_plugins_to_known_list ()
+{
+  for (const auto &info : zrythm::plugins::faust::available_faust_plugins ())
+    {
+      auto juce_desc =
+        zrythm::plugins::faust::make_faust_plugin_descriptor (info)
+          ->to_juce_description ();
+
+      const auto &existing = known_plugin_list_->getTypes ();
+      const auto  it = std::ranges::find_if (existing, [&] (const auto &pd) {
+        return pd.pluginFormatName == juce_desc->pluginFormatName
+               && pd.fileOrIdentifier == juce_desc->fileOrIdentifier;
+      });
+      if (it == existing.end ())
+        {
+          known_plugin_list_->addType (*juce_desc);
+        }
+    }
 }
 
 void
@@ -194,6 +218,8 @@ PluginManager::deserialize_known_plugins ()
     {
       z_info ("No known plugins file found at {}", known_plugins_xml_path_str);
     }
+
+  add_internal_plugins_to_known_list ();
 }
 
 void
@@ -332,4 +358,6 @@ PluginManager::clear_plugins ()
   known_plugin_list_->clear ();
   plugin_categories_.clear ();
   plugin_authors_.clear ();
+
+  add_internal_plugins_to_known_list ();
 }

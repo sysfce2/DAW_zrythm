@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include "plugins/faust/faust_plugin.h"
 #include "plugins/plugin_group.h"
 #include "utils/object_registry.h"
 #include "utils/registry_utils.h"
@@ -51,19 +52,18 @@ TEST_F (DeviceGroupTest, ConstructionAndBasicProperties)
 
 TEST_F (DeviceGroupTest, AppendPlugin)
 {
-  // Create a InternalPluginBase
-  auto plugin_ref =
-    utils::create_object<InternalPluginBase> (*registry_, *registry_);
+  // Create a FaustPlugin
+  auto plugin_ref = utils::create_object<FaustPlugin> (*registry_, *registry_);
 
   // Create plugin configuration
   auto descriptor = std::make_unique<PluginDescriptor> ();
-  descriptor->name_ = u8"Test InternalPluginBase 1";
+  descriptor->name_ = u8"Test FaustPlugin 1";
   descriptor->protocol_ = Protocol::ProtocolType::Internal;
   PluginConfiguration config;
   config.descr_ = std::move (descriptor);
 
   // Get the plugin and set configuration
-  auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+  auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
   plugin->set_configuration (config);
 
   // Test signal emission
@@ -86,16 +86,16 @@ TEST_F (DeviceGroupTest, InsertPluginAtSpecificIndex)
   for (int i = 0; i < 3; ++i)
     {
       auto plugin_ref =
-        utils::create_object<InternalPluginBase> (*registry_, *registry_);
+        utils::create_object<FaustPlugin> (*registry_, *registry_);
 
       auto descriptor = std::make_unique<PluginDescriptor> ();
       descriptor->name_ = utils::Utf8String::from_utf8_encoded_string (
-        fmt::format ("Test InternalPluginBase {}", i + 1));
+        fmt::format ("Test FaustPlugin {}", i + 1));
       descriptor->protocol_ = Protocol::ProtocolType::Internal;
       PluginConfiguration config;
       config.descr_ = std::move (descriptor);
 
-      auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+      auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
       plugin->set_configuration (config);
 
       plugins.push_back (plugin_ref);
@@ -115,36 +115,34 @@ TEST_F (DeviceGroupTest, InsertPluginAtSpecificIndex)
   // Verify order
   EXPECT_EQ (
     get_plugin_at_idx (0)->get_uuid (),
-    plugins[0].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[0].get_object_as<FaustPlugin> ()->get_uuid ());
   EXPECT_EQ (
     get_plugin_at_idx (1)->get_uuid (),
-    plugins[2].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[2].get_object_as<FaustPlugin> ()->get_uuid ());
   EXPECT_EQ (
     get_plugin_at_idx (2)->get_uuid (),
-    plugins[1].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[1].get_object_as<FaustPlugin> ()->get_uuid ());
 }
 
 TEST_F (DeviceGroupTest, InsertPluginAtEnd)
 {
   // Create two test plugins
-  auto plugin_ref1 =
-    utils::create_object<InternalPluginBase> (*registry_, *registry_);
-  auto plugin_ref2 =
-    utils::create_object<InternalPluginBase> (*registry_, *registry_);
+  auto plugin_ref1 = utils::create_object<FaustPlugin> (*registry_, *registry_);
+  auto plugin_ref2 = utils::create_object<FaustPlugin> (*registry_, *registry_);
 
   auto descriptor1 = std::make_unique<PluginDescriptor> ();
-  descriptor1->name_ = u8"Test InternalPluginBase 1";
+  descriptor1->name_ = u8"Test FaustPlugin 1";
   descriptor1->protocol_ = Protocol::ProtocolType::Internal;
   PluginConfiguration config1;
   config1.descr_ = std::move (descriptor1);
-  plugin_ref1.get_object_as<InternalPluginBase> ()->set_configuration (config1);
+  plugin_ref1.get_object_as<FaustPlugin> ()->set_configuration (config1);
 
   auto descriptor2 = std::make_unique<PluginDescriptor> ();
-  descriptor2->name_ = u8"Test InternalPluginBase 2";
+  descriptor2->name_ = u8"Test FaustPlugin 2";
   descriptor2->protocol_ = Protocol::ProtocolType::Internal;
   PluginConfiguration config2;
   config2.descr_ = std::move (descriptor2);
-  plugin_ref2.get_object_as<InternalPluginBase> ()->set_configuration (config2);
+  plugin_ref2.get_object_as<FaustPlugin> ()->set_configuration (config2);
 
   // Insert at end (index -1)
   device_group_->insert_plugin (plugin_ref1, -1);
@@ -153,24 +151,23 @@ TEST_F (DeviceGroupTest, InsertPluginAtEnd)
   EXPECT_EQ (device_group_->rowCount (), 2);
   EXPECT_EQ (
     get_plugin_at_idx (0)->get_uuid (),
-    plugin_ref1.get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugin_ref1.get_object_as<FaustPlugin> ()->get_uuid ());
   EXPECT_EQ (
     get_plugin_at_idx (1)->get_uuid (),
-    plugin_ref2.get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugin_ref2.get_object_as<FaustPlugin> ()->get_uuid ());
 }
 
 TEST_F (DeviceGroupTest, RemovePlugin)
 {
-  // Create a InternalPluginBase
-  auto plugin_ref =
-    utils::create_object<InternalPluginBase> (*registry_, *registry_);
+  // Create a FaustPlugin
+  auto plugin_ref = utils::create_object<FaustPlugin> (*registry_, *registry_);
 
   auto descriptor = std::make_unique<PluginDescriptor> ();
-  descriptor->name_ = u8"Test InternalPluginBase";
+  descriptor->name_ = u8"Test FaustPlugin";
   descriptor->protocol_ = Protocol::ProtocolType::Internal;
   PluginConfiguration config;
   config.descr_ = std::move (descriptor);
-  auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+  auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
   plugin->set_configuration (config);
 
   // Add plugin
@@ -190,16 +187,15 @@ TEST_F (DeviceGroupTest, RemovePlugin)
 
 TEST_F (DeviceGroupTest, RemoveNonExistentPlugin)
 {
-  // Create a InternalPluginBase
-  auto plugin_ref =
-    utils::create_object<InternalPluginBase> (*registry_, *registry_);
+  // Create a FaustPlugin
+  auto plugin_ref = utils::create_object<FaustPlugin> (*registry_, *registry_);
 
   auto descriptor = std::make_unique<PluginDescriptor> ();
-  descriptor->name_ = u8"Test InternalPluginBase";
+  descriptor->name_ = u8"Test FaustPlugin";
   descriptor->protocol_ = Protocol::ProtocolType::Internal;
   PluginConfiguration config;
   config.descr_ = std::move (descriptor);
-  auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+  auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
   plugin->set_configuration (config);
 
   // Try to remove non-existent plugin
@@ -214,16 +210,16 @@ TEST_F (DeviceGroupTest, QmlModelInterface)
   for (int i = 0; i < 3; ++i)
     {
       auto plugin_ref =
-        utils::create_object<InternalPluginBase> (*registry_, *registry_);
+        utils::create_object<FaustPlugin> (*registry_, *registry_);
 
       auto descriptor = std::make_unique<PluginDescriptor> ();
       descriptor->name_ = utils::Utf8String::from_utf8_encoded_string (
-        fmt::format ("Test InternalPluginBase {}", i + 1));
+        fmt::format ("Test FaustPlugin {}", i + 1));
       descriptor->protocol_ = Protocol::ProtocolType::Internal;
       PluginConfiguration config;
       config.descr_ = std::move (descriptor);
 
-      auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+      auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
       plugin->set_configuration (config);
 
       plugins.push_back (plugin_ref);
@@ -248,13 +244,13 @@ TEST_F (DeviceGroupTest, QmlModelInterface)
       QVariant data =
         device_group_->data (index, PluginGroup::DeviceGroupPtrRole);
       EXPECT_TRUE (data.isValid ());
-      EXPECT_TRUE (data.canConvert<InternalPluginBase *> ());
+      EXPECT_TRUE (data.canConvert<FaustPlugin *> ());
 
-      auto * plugin = data.value<InternalPluginBase *> ();
+      auto * plugin = data.value<FaustPlugin *> ();
       EXPECT_EQ (
         plugin->get_name (),
         utils::Utf8String::from_utf8_encoded_string (
-          fmt::format ("Test InternalPluginBase {}", i + 1)));
+          fmt::format ("Test FaustPlugin {}", i + 1)));
     }
 
   // Test invalid index
@@ -270,16 +266,16 @@ TEST_F (DeviceGroupTest, JsonSerializationRoundtrip)
   for (int i = 0; i < 3; ++i)
     {
       auto plugin_ref =
-        utils::create_object<InternalPluginBase> (*registry_, *registry_);
+        utils::create_object<FaustPlugin> (*registry_, *registry_);
 
       auto descriptor = std::make_unique<PluginDescriptor> ();
       descriptor->name_ = utils::Utf8String::from_utf8_encoded_string (
-        fmt::format ("Test InternalPluginBase {}", i + 1));
+        fmt::format ("Test FaustPlugin {}", i + 1));
       descriptor->protocol_ = Protocol::ProtocolType::Internal;
       PluginConfiguration config;
       config.descr_ = std::move (descriptor);
 
-      auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+      auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
       plugin->set_configuration (config);
 
       original_plugins.push_back (plugin_ref);
@@ -326,24 +322,22 @@ TEST_F (DeviceGroupTest, EmptyJsonSerialization)
 TEST_F (DeviceGroupTest, ModelSignals)
 {
   // Create test plugins
-  auto plugin_ref1 =
-    utils::create_object<InternalPluginBase> (*registry_, *registry_);
-  auto plugin_ref2 =
-    utils::create_object<InternalPluginBase> (*registry_, *registry_);
+  auto plugin_ref1 = utils::create_object<FaustPlugin> (*registry_, *registry_);
+  auto plugin_ref2 = utils::create_object<FaustPlugin> (*registry_, *registry_);
 
   auto descriptor1 = std::make_unique<PluginDescriptor> ();
-  descriptor1->name_ = u8"Test InternalPluginBase 1";
+  descriptor1->name_ = u8"Test FaustPlugin 1";
   descriptor1->protocol_ = Protocol::ProtocolType::Internal;
   PluginConfiguration config1;
   config1.descr_ = std::move (descriptor1);
-  plugin_ref1.get_object_as<InternalPluginBase> ()->set_configuration (config1);
+  plugin_ref1.get_object_as<FaustPlugin> ()->set_configuration (config1);
 
   auto descriptor2 = std::make_unique<PluginDescriptor> ();
-  descriptor2->name_ = u8"Test InternalPluginBase 2";
+  descriptor2->name_ = u8"Test FaustPlugin 2";
   descriptor2->protocol_ = Protocol::ProtocolType::Internal;
   PluginConfiguration config2;
   config2.descr_ = std::move (descriptor2);
-  plugin_ref2.get_object_as<InternalPluginBase> ()->set_configuration (config2);
+  plugin_ref2.get_object_as<FaustPlugin> ()->set_configuration (config2);
 
   // Test rowsInserted signal
   QSignalSpy insert_spy (
@@ -354,7 +348,7 @@ TEST_F (DeviceGroupTest, ModelSignals)
   // Test rowsRemoved signal
   QSignalSpy remove_spy (device_group_.get (), &QAbstractItemModel::rowsRemoved);
   device_group_->remove_plugin (
-    plugin_ref1.get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugin_ref1.get_object_as<FaustPlugin> ()->get_uuid ());
   EXPECT_EQ (remove_spy.count (), 1);
 }
 
@@ -365,16 +359,16 @@ TEST_F (DeviceGroupTest, MultipleOperations)
   for (int i = 0; i < 5; ++i)
     {
       auto plugin_ref =
-        utils::create_object<InternalPluginBase> (*registry_, *registry_);
+        utils::create_object<FaustPlugin> (*registry_, *registry_);
 
       auto descriptor = std::make_unique<PluginDescriptor> ();
       descriptor->name_ = utils::Utf8String::from_utf8_encoded_string (
-        fmt::format ("Test InternalPluginBase {}", i + 1));
+        fmt::format ("Test FaustPlugin {}", i + 1));
       descriptor->protocol_ = Protocol::ProtocolType::Internal;
       PluginConfiguration config;
       config.descr_ = std::move (descriptor);
 
-      auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+      auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
       plugin->set_configuration (config);
 
       plugins.push_back (plugin_ref);
@@ -386,7 +380,7 @@ TEST_F (DeviceGroupTest, MultipleOperations)
   device_group_->insert_plugin (plugins[2], 1);
   device_group_->append_plugin (plugins[3]);
   device_group_->remove_plugin (
-    plugins[1].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[1].get_object_as<FaustPlugin> ()->get_uuid ());
   device_group_->insert_plugin (plugins[4], 1);
 
   // Verify final state
@@ -395,16 +389,16 @@ TEST_F (DeviceGroupTest, MultipleOperations)
   // Verify order: [0, 4, 2, 3]
   EXPECT_EQ (
     get_plugin_at_idx (0)->get_uuid (),
-    plugins[0].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[0].get_object_as<FaustPlugin> ()->get_uuid ());
   EXPECT_EQ (
     get_plugin_at_idx (1)->get_uuid (),
-    plugins[4].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[4].get_object_as<FaustPlugin> ()->get_uuid ());
   EXPECT_EQ (
     get_plugin_at_idx (2)->get_uuid (),
-    plugins[2].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[2].get_object_as<FaustPlugin> ()->get_uuid ());
   EXPECT_EQ (
     get_plugin_at_idx (3)->get_uuid (),
-    plugins[3].get_object_as<InternalPluginBase> ()->get_uuid ());
+    plugins[3].get_object_as<FaustPlugin> ()->get_uuid ());
 }
 
 } // namespace zrythm::plugins

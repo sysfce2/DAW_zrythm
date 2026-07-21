@@ -222,6 +222,14 @@ private:
   clap::helpers::EventList evOut_;
   clap_process             process_{};
 
+  /**
+   * @brief Supported note dialects of each input note port (bitmask of
+   * clap_note_dialect), queried on the main thread when the ports are
+   * created while the plugin is inactive. Read on the audio thread during
+   * process_impl().
+   */
+  std::vector<uint32_t> note_in_supported_dialects_;
+
   /* param update queues */
   std::unordered_map<clap_id, ClapParamAdapter> clap_params_;
 
@@ -1220,8 +1228,26 @@ void
 ClapPlugin::ClapPluginImpl::generateMidiInputEvents () noexcept
 {
   // Fill MIDI events from the MIDI input port
-  if (owner_.get_descriptor ().num_midi_ins_ > 0)
+  if (owner_.get_descriptor ().num_midi_ins_ <= 0)
+    return;
+
+  // Send raw MIDI events if the first note port supports the MIDI dialect
+  // (lossless passthrough of the internal MIDI stream). Otherwise, convert
+  // note on/off messages to CLAP note events, which all note ports are
+  // required to support.
+  // TODO: only the first note port's dialect is checked; plugins with
+  // multiple note ports that declare different dialects are not handled.
+  const bool send_midi_dialect =
+    note_in_supported_dialects_.empty ()
+    || (note_in_supported_dialects_[0] & CLAP_NOTE_DIALECT_MIDI) != 0;
+
+  if (send_midi_dialect)
     {
+      // TODO: CC, pitch-bend, aftertouch and other non-note MIDI messages are
+      // silently dropped here — convert them to CLAP_EVENT_NOTE_EXPRESSION /
+      // CLAP_EVENT_PARAM_VALUE for full MPE / polyphonic modulation support.
+      // TODO: assign unique note_ids so CLAP synths that support per-note
+      // expression can track individual notes.
       for (const auto &ev : owner_.midi_in_port_->buffer_)
         {
           const auto ev_data = ev.data ();
@@ -1251,6 +1277,35 @@ ClapPlugin::ClapPluginImpl::generateMidiInputEvents () noexcept
               evIn_.push (&clap_ev.header);
             }
         }
+      return;
+    }
+
+  for (const auto &ev : owner_.midi_in_port_->buffer_)
+    {
+      const auto ev_data = ev.data ();
+      if (ev_data.size () < 3)
+        continue;
+
+      const auto status = ev_data[0] & 0xF0;
+      const bool is_note_on = status == 0x90 && ev_data[2] != 0;
+      const bool is_note_off =
+        status == 0x80 || (status == 0x90 && ev_data[2] == 0);
+      if (!is_note_on && !is_note_off)
+        continue;
+
+      clap_event_note clap_ev{};
+      clap_ev.header.size = sizeof (clap_ev);
+      clap_ev.header.time = ev.time ().in<uint32_t> (units::samples);
+      clap_ev.header.type =
+        is_note_on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
+      clap_ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+      clap_ev.header.flags = 0;
+      clap_ev.note_id = -1; // no per-note tracking
+      clap_ev.port_index = 0;
+      clap_ev.channel = static_cast<int16_t> (ev_data[0] & 0x0F);
+      clap_ev.key = static_cast<int16_t> (ev_data[1]);
+      clap_ev.velocity = ev_data[2] / 127.0;
+      evIn_.push (&clap_ev.header);
     }
 }
 
@@ -1350,8 +1405,18 @@ ClapPlugin::create_ports_from_clap_plugin ()
     {
       const auto midi_in_ports = pimpl_->plugin_->notePortsCount (true);
       const auto midi_out_ports = pimpl_->plugin_->notePortsCount (false);
+      pimpl_->note_in_supported_dialects_.clear ();
       for (const auto i : std::views::iota (0u, midi_in_ports))
         {
+          clap_note_port_info info{};
+          // Always push so the vector stays index-aligned with the note
+          // ports. Default to the MIDI dialect when unknown: its passthrough
+          // is lossless, while the CLAP-note conversion currently drops
+          // non-note messages (see TODOs in generateMidiInputEvents()).
+          pimpl_->note_in_supported_dialects_.push_back (
+            pimpl_->plugin_->notePortsGet (i, true, &info)
+              ? info.supported_dialects
+              : CLAP_NOTE_DIALECT_MIDI);
           auto port_ref = utils::create_object<dsp::MidiPort> (
             registry (),
             utils::Utf8String::from_utf8_encoded_string (

@@ -51,6 +51,7 @@ target_sources(zrythm_dsp_lib
     peak_fall_smooth.cpp
     playhead.cpp
     playhead_qml_adapter.cpp
+    poly_voice_manager.cpp
     port.cpp
     port_connection.cpp
     port_connections_manager.cpp
@@ -124,6 +125,7 @@ target_sources(zrythm_dsp_lib
       peak_fall_smooth.h
       playhead.h
       playhead_qml_adapter.h
+      poly_voice_manager.h
       port.h
       port_all.h
       port_connection.h
@@ -135,6 +137,7 @@ target_sources(zrythm_dsp_lib
       position.h
       processor_base.h
       snap_grid.h
+      synth_voice.h
       timestretch_engine.h
       timebase.h
       rubberband_timestretch_engine.h

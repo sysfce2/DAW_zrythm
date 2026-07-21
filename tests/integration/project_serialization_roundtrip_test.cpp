@@ -8,12 +8,14 @@
  * These tests verify the full save -> load -> save cycle works correctly.
  */
 
+#include <cstring>
 #include <optional>
 
 #include "actions/plugin_importer.h"
 #include "actions/track_creator.h"
 #include "controllers/project_loader.h"
 #include "controllers/project_saver.h"
+#include "plugins/faust/faust_registry.h"
 #include "plugins/plugin_descriptor.h"
 #include "structure/project/project_path_provider.h"
 #include "structure/project/project_ui_state.h"
@@ -21,10 +23,10 @@
 
 #include <QSignalSpy>
 
-#include "helpers/bundled_plugin_finder.h"
 #include "helpers/project_fixture.h"
 #include "helpers/project_json_comparators.h"
 #include "helpers/qt_helpers.h"
+#include "helpers/test_plugin_finder.h"
 
 #include <gtest/gtest.h>
 #include <juce_core/juce_core.h>
@@ -33,37 +35,59 @@ namespace zrythm::controllers
 {
 
 /**
- * @brief Decodes a base64 Faust plugin state blob into path→value pairs.
+ * @brief Decodes a CLAP test plugin state blob.
  *
- * The Faust JUCE architecture writes state as repeated
- * writeString(path) + writeFloat(value) pairs.
+ * CLAP test plugin state blobs are a single raw little-endian double (the
+ * Level parameter value).
  */
 static std::map<std::string, float>
-decode_faust_state (const QByteArray &raw_state)
+decode_test_clap_state (const QByteArray &raw_state)
 {
-  std::map<std::string, float> result;
-  juce::MemoryInputStream      stream (
-    raw_state.constData (), static_cast<size_t> (raw_state.size ()), false);
-  while (!stream.isExhausted ())
-    {
-      auto path = stream.readString ().toStdString ();
-      if (path.empty ())
-        break;
-      auto value = stream.readFloat ();
-      result[path] = value;
-    }
-  return result;
+  if (raw_state.size () != sizeof (double))
+    return {};
+  double value = 0.0;
+  std::memcpy (&value, raw_state.constData (), sizeof (value));
+  return {
+    { "level", static_cast<float> (value) }
+  };
 }
 
 /**
- * @brief Extracts and decodes the Faust plugin state from the project JSON.
+ * @brief Decodes a VST3 test plugin state blob.
  *
- * Only works for CLAP plugins where the state blob contains the raw Faust
- * format (writeString + writeFloat pairs). VST3 state blobs use the VST3
- * SDK's opaque serialization and cannot be decoded this way.
+ * VST3 state blobs are JUCE's `VST3PluginState` binary XML whose
+ * `IEditController` child holds the base64-encoded controller state (a single
+ * raw little-endian double written by the test plugin via IBStreamer).
  */
 static std::map<std::string, float>
-get_faust_state_from_json (const nlohmann::json &project_json)
+decode_test_vst3_state (const void * data, size_t size)
+{
+  const auto xml =
+    juce::AudioProcessor::getXmlFromBinary (data, static_cast<int> (size));
+  if (xml == nullptr)
+    return {};
+  const auto * controller_state = xml->getChildByName ("IEditController");
+  if (controller_state == nullptr)
+    return {};
+  juce::MemoryBlock mem;
+  if (!mem.fromBase64Encoding (controller_state->getAllSubText ()))
+    return {};
+  if (mem.getSize () != sizeof (double))
+    return {};
+  double value = 0.0;
+  std::memcpy (&value, mem.getData (), sizeof (value));
+  return {
+    { "level", static_cast<float> (value) }
+  };
+}
+
+/**
+ * @brief Extracts and decodes the test plugin state from the project JSON.
+ */
+static std::map<std::string, float>
+get_test_plugin_state_from_json (
+  const nlohmann::json           &project_json,
+  plugins::Protocol::ProtocolType protocol)
 {
   const auto &plugin_reg = project_json["projectData"]["registry"]["plugins"];
   if (plugin_reg.empty ())
@@ -72,10 +96,21 @@ get_faust_state_from_json (const nlohmann::json &project_json)
   if (!plugin_json.contains ("state"))
     return {};
 
-  const auto b64 =
-    QString::fromStdString (plugin_json["state"].get<std::string> ());
-  const auto raw = QByteArray::fromBase64 (b64.toUtf8 ());
-  return decode_faust_state (raw);
+  const auto state_str = plugin_json["state"].get<std::string> ();
+  if (protocol == plugins::Protocol::ProtocolType::VST3)
+    {
+      // JucePlugin states are encoded with juce::MemoryBlock's base64 format
+      // ("<byte size>." prefix + custom alphabet), so use JUCE's matching
+      // decoder.
+      juce::MemoryBlock mem;
+      if (!mem.fromBase64Encoding (state_str))
+        return {};
+      return decode_test_vst3_state (mem.getData (), mem.getSize ());
+    }
+
+  const auto raw =
+    QByteArray::fromBase64 (QByteArray::fromStdString (state_str));
+  return decode_test_clap_state (raw);
 }
 
 /**
@@ -165,10 +200,20 @@ protected:
    * @param descriptor The plugin descriptor to import.
    * @param expected_param_count Expected number of parameters after import
    *   (including bypass and gain). Use std::nullopt to skip this check.
+   * @param param_label Label of the DSP parameter to modify before saving.
+   * @param test_value Normalized (0-1) value to set the parameter to.
+   * @param post_load_verifier Optional callback invoked at the very end
+   *   (after the resave comparison, so it may freely modify the loaded
+   *   plugin) with the loaded project and plugin, e.g. to verify that
+   *   parameter values reach the DSP after loading.
    */
   void save_load_save_roundtrip_with_plugin (
     const plugins::PluginDescriptor &descriptor,
-    std::optional<size_t>            expected_param_count = std::nullopt)
+    std::optional<size_t>            expected_param_count = std::nullopt,
+    const utils::Utf8String         &param_label = u8"Level",
+    float                            test_value = 0.75f,
+    std::function<void (ProjectBundle &, const plugins::PluginPtrVariant &)>
+      post_load_verifier = nullptr)
   {
     // === Step 1: Create project and import plugin via PluginImporter ===
     auto original_bundle = std::make_unique<ProjectBundle> ();
@@ -246,21 +291,19 @@ protected:
     // on first load) before we set our custom values.
     process_until_timeout (*original_bundle->project);
 
-    // Find the Frequency parameter (the only Faust DSP param) and set it
-    // to a known non-default value.
-    constexpr float           test_value = 0.75f;
-    dsp::ProcessorParameter * freq_param = nullptr;
-    dsp::ParameterRange       freq_range{};
+    // Find the target DSP parameter and set it to a known non-default value.
+    dsp::ProcessorParameter * gain_param = nullptr;
+    dsp::ParameterRange       gain_range{};
     std::visit (
       [&] (auto &&pl) {
         for (const auto &param_ref : pl->get_parameters ())
           {
             auto * param =
               param_ref.template get_object_as<dsp::ProcessorParameter> ();
-            if (param->label ().contains (u8"Frequency"))
+            if (param->label ().contains (param_label.to_qstring ()))
               {
-                freq_param = param;
-                freq_range = param->range ();
+                gain_param = param;
+                gain_range = param->range ();
                 param->setBaseValue (test_value);
                 original_param_values.push_back (
                   { param->get_uuid (), param->label (), test_value });
@@ -273,10 +316,10 @@ protected:
     // plugin (JUCE/CLAP) before the state blob is captured during save.
     // Wait until the value stabilizes to avoid a race where the plugin
     // reports back its stale default before processing the new value.
-    if (freq_param != nullptr)
+    if (gain_param != nullptr)
       {
         process_until_true (*original_bundle->project, [&] () {
-          return std::abs (freq_param->baseValue () - test_value) < 0.01f;
+          return std::abs (gain_param->baseValue () - test_value) < 0.01f;
         });
       }
     else
@@ -320,21 +363,22 @@ protected:
             << "Plugin JSON should contain 'state' key for format: "
             << static_cast<int> (descriptor.protocol_);
 
-          // For CLAP: the state blob is the raw Faust format
-          // (writeString+writeFloat). Decode and verify parameter values.
-          // For VST3: the state blob is the VST3 SDK's opaque serialization —
-          // just verify it exists (binary consistency is checked by
-          // expect_registries_match below).
-          if (descriptor.protocol_ == plugins::Protocol::ProtocolType::CLAP)
+          // Decode the state blob and verify the parameter values. For VST3,
+          // the blob is JUCE's VST3PluginState XML; for CLAP, the raw bytes
+          // written by the plugin's stateSave.
+          if (
+            descriptor.protocol_ == plugins::Protocol::ProtocolType::CLAP
+            || descriptor.protocol_ == plugins::Protocol::ProtocolType::VST3)
             {
-              auto saved_state = get_faust_state_from_json (original_json);
+              auto saved_state = get_test_plugin_state_from_json (
+                original_json, descriptor.protocol_);
               EXPECT_FALSE (saved_state.empty ())
-                << "Faust state blob should contain at least one parameter";
-              if (freq_param != nullptr)
+                << "State blob should contain at least one parameter";
+              if (gain_param != nullptr)
                 {
                   for (const auto &[path, value] : saved_state)
                     {
-                      const float normalized = freq_range.convertTo0To1 (value);
+                      const float normalized = gain_range.convertTo0To1 (value);
                       EXPECT_NEAR (normalized, test_value, 0.001f)
                         << "State blob parameter '" << path << "' plain value "
                         << value << " (normalized=" << normalized
@@ -385,7 +429,7 @@ protected:
 
     // === Step 4a: Process and wait for parameter sync to settle ===
     // All snapshots must have a matching param with the expected value.
-    // When there are no FAUST params to verify (e.g. internal plugins),
+    // When there are no plugin DSP params to verify (e.g. internal plugins),
     // just process for a few cycles instead.
     {
       EXPECT_NO_FATAL_FAILURE ({
@@ -479,13 +523,21 @@ protected:
     const auto resave_json = nlohmann::json::parse (
       ProjectSaver::get_existing_uncompressed_text (resave_dir));
     test_helpers::expect_registries_match (original_json, resave_json);
+
+    // === Step 6: Optional post-load verification ===
+    // Runs after the resave comparison so it may freely modify the loaded
+    // plugin without affecting the roundtrip JSON.
+    if (post_load_verifier != nullptr)
+      {
+        post_load_verifier (*loaded_bundle, loaded_plugin_var);
+      }
   }
 };
 
 /**
  * @brief Tests full save -> load -> save roundtrip with an internal plugin.
  *
- * Internal plugins have 2 built-in params (bypass + gain) and no FAUST params.
+ * Internal plugins have 2 built-in params (bypass + gain) and no DSP params.
  */
 TEST_F (
   ProjectSerializationRoundtripTest,
@@ -495,58 +547,144 @@ TEST_F (
   descriptor->name_ = u8"Test Roundtrip Plugin";
   descriptor->protocol_ = plugins::Protocol::ProtocolType::Internal;
 
-  // 2 built-in (bypass + gain), no FAUST params
+  // 2 built-in (bypass + gain), no DSP params
   save_load_save_roundtrip_with_plugin (*descriptor, 2);
+}
+
+/**
+ * @brief Tests save -> load -> save with a bundled Faust plugin, verifying
+ * that the restored parameter value reaches the DSP after loading.
+ *
+ * Uses White Noise (a generator, so no audio input is needed) with Amp set
+ * to maximum (normalized 1.0 = 10 dB; the default is -10 dB). After loading,
+ * output must be loud without touching the parameter (initial push), and
+ * lowering Amp afterwards must make it quiet (live propagation).
+ */
+TEST_F (ProjectSerializationRoundtripTest, SaveLoadSaveRoundtripWithFaustPlugin)
+{
+  const auto * info =
+    plugins::faust::find_faust_plugin_by_key (u8"zrythm.faust.white_noise");
+  ASSERT_NE (info, nullptr);
+  auto descriptor = plugins::faust::make_faust_plugin_descriptor (*info);
+  ASSERT_NE (descriptor, nullptr);
+
+  auto verify_output_follows_param =
+    [] (ProjectBundle &loaded_bundle, const plugins::PluginPtrVariant &pl_var) {
+      std::visit (
+        [&] (auto &&pl) {
+          // Find the Amp param and the audio output port
+          dsp::ProcessorParameter * amp_param = nullptr;
+          dsp::AudioPort *          audio_out = nullptr;
+          for (const auto &param_ref : pl->get_parameters ())
+            {
+              auto * param =
+                param_ref.template get_object_as<dsp::ProcessorParameter> ();
+              if (param->label ().contains (u8"Amp"))
+                amp_param = param;
+            }
+          for (const auto &port_ref : pl->get_output_ports ())
+            {
+              if (
+                auto * port = port_ref.template get_object_as<dsp::AudioPort> ())
+                audio_out = port;
+            }
+          ASSERT_NE (amp_param, nullptr);
+          ASSERT_NE (audio_out, nullptr);
+
+          // Process the plugin directly (the engine is deactivated after the
+          // resave, so no audio thread races)
+          pl->prepare_for_processing (
+            nullptr, units::sample_rate (48000), units::samples (256));
+          const dsp::graph::ProcessBlockInfo time_nfo{
+            .transport_position_ = units::samples (0),
+            .buffer_offset_ = units::samples (0),
+            .nframes_ = units::samples (256),
+          };
+          auto &transport = *loaded_bundle.project->transport_;
+          auto &tempo_map = loaded_bundle.project->tempo_map ();
+          auto  transport_snapshot = transport.get_snapshot ();
+
+          const auto process_blocks = [&] (int count) {
+            for (int i = 0; i < count; ++i)
+              pl->process_block (time_nfo, transport_snapshot, tempo_map);
+          };
+          const auto measure_peak = [&] () {
+            float peak = 0.f;
+            for (int ch = 0; ch < audio_out->buffers ()->getNumChannels (); ++ch)
+              {
+                peak = std::max (
+                  peak, audio_out->buffers ()->getMagnitude (ch, 0, 256));
+              }
+            return peak;
+          };
+
+          // Initial push: the restored 10 dB value must reach the DSP without
+          // touching the param (si.smoo needs time to settle)
+          process_blocks (100);
+          const float loud_peak = measure_peak ();
+
+          // Live propagation: lowering Amp must make the output quiet
+          amp_param->setBaseValue (0.f);
+          process_blocks (100);
+          const float quiet_peak = measure_peak ();
+
+          EXPECT_GT (loud_peak, quiet_peak * 100.f)
+            << "Faust param mapping broken after project load (loud="
+            << loud_peak << " quiet=" << quiet_peak << ")";
+        },
+        pl_var);
+    };
+
+  // 2 built-in (bypass + gain) + 1 DSP param (Amp) = 3
+  save_load_save_roundtrip_with_plugin (
+    *descriptor, 3, u8"Amp", 1.0f, verify_output_follows_param);
 }
 
 /**
  * @brief Tests full save -> load -> save roundtrip with a bundled VST3 plugin.
  *
- * Uses the Highpass Filter plugin which has 1 FAUST parameter (Frequency).
- * Expected params: 2 built-in (bypass + gain) + 1 JUCE bypass + 1 FAUST = 4.
+ * Uses the Test Gain plugin which has 1 plugin parameter (Gain).
+ * Expected params: 2 built-in (bypass + gain) + 1 plugin param (Gain) = 3.
  */
 TEST_F (ProjectSerializationRoundtripTest, LoadProjectWithVst3Plugin)
 {
-  static const juce::String kTargetPluginName = "Highpass Filter";
+  static const juce::String kTargetPluginName = "Test Gain";
   auto                      juce_desc =
-    test_helpers::find_bundled_vst3_plugin_by_name (kTargetPluginName);
+    test_helpers::find_test_vst3_plugin_by_name (kTargetPluginName);
   ASSERT_NE (juce_desc, nullptr)
-    << "Bundled VST3 plugin '" << kTargetPluginName
-    << "' not found - check BUNDLED_VST3_SEARCH_PATHS";
+    << "Test VST3 plugin '" << kTargetPluginName
+    << "' not found - check TEST_VST3_SEARCH_PATHS";
 
   auto descriptor =
     plugins::PluginDescriptor::from_juce_description (*juce_desc);
   ASSERT_NE (descriptor, nullptr);
 
-  // 2 built-in (bypass + gain) + 1 JUCE bypass param + 1 FAUST param
-  // (Frequency)
-  save_load_save_roundtrip_with_plugin (*descriptor, 4);
+  // 2 built-in (bypass + gain) + 1 plugin param (Gain)
+  save_load_save_roundtrip_with_plugin (*descriptor, 3);
 }
 
 /**
- * @brief Tests full save -> load -> save roundtrip with a bundled CLAP plugin.
+ * @brief Tests full save -> load -> save roundtrip with a CLAP test plugin.
  *
- * Uses the Highpass Filter plugin which has 1 FAUST parameter (Frequency).
- * Expected params: 2 built-in (bypass + gain) + 1 CLAP param (Frequency) = 3.
+ * Uses the Test Gain plugin which has 1 plugin parameter (Gain).
+ * Expected params: 2 built-in (bypass + gain) + 1 CLAP param (Gain) = 3.
  * This test catches bug 5: CLAP params not exposed as Zrythm
  * ProcessorParameters.
  */
 TEST_F (ProjectSerializationRoundtripTest, LoadProjectWithClapPlugin)
 {
-  static const juce::String kTargetPluginName = "Highpass Filter";
+  static const juce::String kTargetPluginName = "Test Gain";
   auto                      juce_desc =
-    test_helpers::find_bundled_clap_plugin_by_name (kTargetPluginName);
+    test_helpers::find_test_clap_plugin_by_name (kTargetPluginName);
   ASSERT_NE (juce_desc, nullptr)
-    << "Bundled CLAP plugin '" << kTargetPluginName
-    << "' not found - check BUNDLED_CLAP_SEARCH_PATHS";
+    << "Test CLAP plugin '" << kTargetPluginName
+    << "' not found - check TEST_CLAP_SEARCH_PATHS";
 
   auto descriptor =
     plugins::PluginDescriptor::from_juce_description (*juce_desc);
   ASSERT_NE (descriptor, nullptr);
 
-  // The CLAP plugin wraps the same JUCE AudioProcessor but does not expose
-  // the JUCE bypass parameter as a separate CLAP param, so we get 3 params
-  // (bypass + gain + Frequency) instead of 4 like VST3.
+  // 2 built-in (bypass + gain) + 1 plugin param (Gain)
   save_load_save_roundtrip_with_plugin (*descriptor, 3);
 }
 
@@ -559,16 +697,16 @@ TEST_F (ProjectSerializationRoundtripTest, LoadProjectWithClapPlugin)
  * must apply the state blob as the source of truth rather than overwriting it
  * with its own baseValue.
  *
- * Strategy: save with Frequency=0.75, modify the JSON baseValue to 0.25,
+ * Strategy: save with Level=0.75, modify the JSON baseValue to 0.25,
  * reload, process, then verify the resaved state blob still has 0.75.
  */
 TEST_F (
   ProjectSerializationRoundtripTest,
   ClapStatePreservedOnReloadWithDivergedValue)
 {
-  static const juce::String kTargetPluginName = "Highpass Filter";
+  static const juce::String kTargetPluginName = "Test Gain";
   auto                      juce_desc =
-    test_helpers::find_bundled_clap_plugin_by_name (kTargetPluginName);
+    test_helpers::find_test_clap_plugin_by_name (kTargetPluginName);
   ASSERT_NE (juce_desc, nullptr)
     << "Bundled CLAP plugin '" << kTargetPluginName << "' not found";
 
@@ -576,7 +714,7 @@ TEST_F (
     plugins::PluginDescriptor::from_juce_description (*juce_desc);
   ASSERT_NE (descriptor, nullptr);
 
-  // === Step 1: Create project, set Frequency to 0.75, save ===
+  // === Step 1: Create project, set Level to 0.75, save ===
   auto bundle = std::make_unique<ProjectBundle> ();
   bundle->project = create_minimal_project ();
   ASSERT_NE (bundle->project, nullptr);
@@ -615,7 +753,7 @@ TEST_F (
 
   constexpr float     correct_value = 0.75f;
   constexpr float     stale_value = 0.25f;
-  dsp::ParameterRange freq_range{};
+  dsp::ParameterRange gain_range{};
 
   auto &plugin_reg = bundle->project->get_registry ();
   ASSERT_EQ (plugin_reg.count_matching<plugins::Plugin> (), 1);
@@ -623,26 +761,26 @@ TEST_F (
   plugin_reg.for_each_matching<plugins::Plugin> ([&] (plugins::Plugin &pl) {
     plugin_var = utils::convert_to_variant_qobj<plugins::PluginPtrVariant> (&pl);
   });
-  dsp::ProcessorParameter * freq_param = nullptr;
+  dsp::ProcessorParameter * gain_param = nullptr;
   std::visit (
     [&] (auto &&pl) {
       for (const auto &param_ref : pl->get_parameters ())
         {
           auto * param =
             param_ref.template get_object_as<dsp::ProcessorParameter> ();
-          if (param->label ().contains (u8"Frequency"))
+          if (param->label ().contains (u8"Level"))
             {
-              freq_range = param->range ();
-              freq_param = param;
+              gain_range = param->range ();
+              gain_param = param;
               param->setBaseValue (correct_value);
             }
         }
     },
     plugin_var);
-  ASSERT_NE (freq_param, nullptr);
+  ASSERT_NE (gain_param, nullptr);
 
   process_until_true (*bundle->project, [&] () {
-    return std::abs (freq_param->baseValue () - correct_value) < 0.01f;
+    return std::abs (gain_param->baseValue () - correct_value) < 0.01f;
   });
 
   auto save_future = ProjectSaver::save (
@@ -664,11 +802,12 @@ TEST_F (
   auto saved_json = nlohmann::json::parse (
     ProjectSaver::get_existing_uncompressed_text (project_dir_));
 
-  auto original_state = get_faust_state_from_json (saved_json);
+  auto original_state = get_test_plugin_state_from_json (
+    saved_json, plugins::Protocol::ProtocolType::CLAP);
   ASSERT_FALSE (original_state.empty ());
   for (const auto &[path, value] : original_state)
     {
-      float normalized = freq_range.convertTo0To1 (value);
+      float normalized = gain_range.convertTo0To1 (value);
       EXPECT_NEAR (normalized, correct_value, 0.01f)
         << "Original state blob should have correct_value";
     }
@@ -680,18 +819,18 @@ TEST_F (
     {
       if (
         param_json.contains ("label")
-        && param_json["label"].get<std::string> ().find ("Frequency")
+        && param_json["label"].get<std::string> ().find ("Level")
              != std::string::npos)
         {
           float original = param_json["baseValue"].get<float> ();
           ASSERT_NEAR (original, correct_value, 0.01f)
-            << "Frequency baseValue should be correct_value before modification";
+            << "Level baseValue should be correct_value before modification";
           param_json["baseValue"] = stale_value;
           modified = true;
           break;
         }
     }
-  ASSERT_TRUE (modified) << "Could not find Frequency parameter to modify";
+  ASSERT_TRUE (modified) << "Could not find Level parameter to modify";
 
   // Write tampered JSON back (compressed)
   {
@@ -733,10 +872,10 @@ TEST_F (
     load_result.result ().json, *reload_bundle->project,
     *reload_bundle->ui_state, *reload_bundle->undo_stack);
 
-  // Find the Frequency parameter in the reloaded plugin for condition checking
+  // Find the Level parameter in the reloaded plugin for condition checking
   auto &reload_registry = reload_bundle->project->get_registry ();
   ASSERT_EQ (reload_registry.count_matching<plugins::Plugin> (), 1);
-  dsp::ProcessorParameter * reload_freq_param = nullptr;
+  dsp::ProcessorParameter * reload_gain_param = nullptr;
   plugins::PluginPtrVariant reload_plugin_var;
   reload_registry.for_each_matching<plugins::Plugin> ([&] (plugins::Plugin &pl) {
     reload_plugin_var =
@@ -748,19 +887,19 @@ TEST_F (
         {
           auto * param =
             param_ref.template get_object_as<dsp::ProcessorParameter> ();
-          if (param->label ().contains (u8"Frequency"))
-            reload_freq_param = param;
+          if (param->label ().contains (u8"Level"))
+            reload_gain_param = param;
         }
     },
     reload_plugin_var);
-  ASSERT_NE (reload_freq_param, nullptr);
+  ASSERT_NE (reload_gain_param, nullptr);
 
   // Process so the audio thread runs and the host has a chance to apply
   // baseValues from the plugin state blob.
   EXPECT_NO_FATAL_FAILURE ({
     process_until_true (*reload_bundle->project, [&] () {
       return utils::math::floats_near (
-        reload_freq_param->baseValue (), correct_value, 0.01f);
+        reload_gain_param->baseValue (), correct_value, 0.01f);
     });
   });
 
@@ -774,12 +913,13 @@ TEST_F (
 
   auto verify_json = nlohmann::json::parse (
     ProjectSaver::get_existing_uncompressed_text (verify_dir));
-  auto final_state = get_faust_state_from_json (verify_json);
+  auto final_state = get_test_plugin_state_from_json (
+    verify_json, plugins::Protocol::ProtocolType::CLAP);
   ASSERT_FALSE (final_state.empty ());
 
   for (const auto &[path, value] : final_state)
     {
-      float normalized = freq_range.convertTo0To1 (value);
+      float normalized = gain_range.convertTo0To1 (value);
       EXPECT_NEAR (normalized, correct_value, 0.001f)
         << "State blob should preserve correct_value (" << correct_value
         << "), not stale_value (" << stale_value

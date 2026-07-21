@@ -84,6 +84,7 @@ namespace
 {
 const zrythm::utils::ConstBidirectionalMap<Protocol::ProtocolType, juce::String>
   juce_format_mappings = {
+    { Protocol::ProtocolType::Internal,  "Internal"  },
     { Protocol::ProtocolType::LV2,       "LV2"       },
     { Protocol::ProtocolType::LADSPA,    "LADSPA"    },
     { Protocol::ProtocolType::VST,       "VST"       },

@@ -7,9 +7,8 @@ add_subdirectory(lv2)
 add_subdirectory(moodycamel)
 
 set(JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED ON)
-if(NOT ZRYTHM_BUNDLED_PLUGINS)
-  set(JUCE_MODULES_ONLY ON)
-endif()
+# We only consume JUCE modules (hosting + utilities)
+set(JUCE_MODULES_ONLY ON)
 add_library(juce_lib STATIC)
 
 # some versions of cmake require at least 1 source file for static libs...

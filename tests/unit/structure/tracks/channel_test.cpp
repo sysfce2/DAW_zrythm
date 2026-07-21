@@ -5,7 +5,7 @@
 #include "dsp/parameter.h"
 #include "dsp/port.h"
 #include "dsp/processor_base.h"
-#include "plugins/internal_plugin_base.h"
+#include "plugins/faust/faust_plugin.h"
 #include "plugins/plugin.h"
 #include "plugins/plugin_group.h"
 #include "structure/tracks/channel.h"
@@ -73,9 +73,9 @@ protected:
     plugins::PluginConfiguration config;
     config.descr_ = std::move (descriptor);
 
-    auto ref = utils::create_object<plugins::InternalPluginBase> (
+    auto ref = utils::create_object<plugins::FaustPlugin> (
       *registry_, *registry_, nullptr);
-    auto * pl = ref.get_object_as<plugins::InternalPluginBase> ();
+    auto * pl = ref.get_object_as<plugins::FaustPlugin> ();
     pl->set_configuration (config);
 
     return ref;
@@ -261,7 +261,7 @@ TEST_F (ChannelTest, InstrumentManagement)
   // Test instrument Q_PROPERTY
   EXPECT_EQ (
     midi_channel_->instruments ()->element_at_idx (0).value<plugins::Plugin *> (),
-    qobject_cast<plugins::InternalPluginBase *> (mock_plugin_ref.get ()));
+    qobject_cast<plugins::FaustPlugin *> (mock_plugin_ref.get ()));
 
   // Test removing instrument
   midi_channel_->instruments ()->remove_plugin (mock_plugin_ref.id ());

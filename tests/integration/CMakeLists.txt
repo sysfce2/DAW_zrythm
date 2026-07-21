@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 add_executable(zrythm_integration_tests
-  bundled_plugins_scan_test.cpp
+  test_plugins_scan_test.cpp
   plugin_integration_test.cpp
   port_observer_graph_test.cpp
   project_serialization_roundtrip_test.cpp

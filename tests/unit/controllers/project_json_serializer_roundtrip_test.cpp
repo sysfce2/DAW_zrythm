@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: © 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include "plugins/faust/faust_plugin.h"
 #include "project_json_serializer_test.h"
 #include "utils/registry_utils.h"
 
@@ -287,7 +288,7 @@ TEST_F (ProjectSerializationTest, RoundTrip_WithPlugin)
   config.descr_ = std::move (descriptor);
 
   // Create the plugin
-  auto plugin_ref = utils::create_object<plugins::InternalPluginBase> (
+  auto plugin_ref = utils::create_object<plugins::FaustPlugin> (
     project_registry, project_registry, nullptr);
   auto * plugin = plugin_ref.get ();
   plugin->set_configuration (config);

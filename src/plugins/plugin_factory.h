@@ -197,7 +197,7 @@ public:
       }
     if (protocol == plugins::Protocol::ProtocolType::Internal)
       {
-        return get_builder<plugins::InternalPluginBase> ()
+        return get_builder<plugins::FaustPlugin> ()
           .with_setting (setting)
           .with_instantiation_finished_options (instantiation_finish_options)
           .build ();

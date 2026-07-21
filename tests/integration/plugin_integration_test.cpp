@@ -6,7 +6,7 @@
  * Integration tests for plugin hosting: parameter synchronization, audio
  * output, and save/load roundtrip.
  *
- * Tests both CLAP and VST3 (JUCE) variants of each bundled plugin.
+ * Tests both CLAP and VST3 (JUCE) variants of each test plugin.
  */
 
 #include <ostream>
@@ -22,8 +22,8 @@
 #include "utils/audio.h"
 #include "utils/midi.h"
 
-#include "helpers/bundled_plugin_finder.h"
 #include "helpers/project_fixture.h"
+#include "helpers/test_plugin_finder.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
@@ -142,13 +142,13 @@ protected:
     const auto juce_desc = [&] () {
       if (param.format == PluginTestParam::Format::CLAP)
         {
-          return test_helpers::find_bundled_clap_plugin_by_name (plugin_name);
+          return test_helpers::find_test_clap_plugin_by_name (plugin_name);
         }
 
-      return test_helpers::find_bundled_vst3_plugin_by_name (plugin_name);
+      return test_helpers::find_test_vst3_plugin_by_name (plugin_name);
     }();
     EXPECT_NE (juce_desc, nullptr)
-      << "Bundled " << format_str << " plugin '" << param.plugin_name
+      << "Test " << format_str << " plugin '" << param.plugin_name
       << "' not found";
 
     const auto descriptor =
@@ -221,11 +221,11 @@ class PluginInstrumentTest : public PluginIntegrationTestBase
 };
 
 INSTANTIATE_TEST_SUITE_P (
-  TripleSynth,
+  TestSynth,
   PluginInstrumentTest,
   testing::Values (
-    PluginTestParam{ "Triple Synth", PluginTestParam::Format::CLAP },
-    PluginTestParam{ "Triple Synth", PluginTestParam::Format::VST3 }));
+    PluginTestParam{ "Test Synth", PluginTestParam::Format::CLAP },
+    PluginTestParam{ "Test Synth", PluginTestParam::Format::VST3 }));
 
 TEST_P (PluginInstrumentTest, FreshInstanceProducesSound)
 {
@@ -296,12 +296,12 @@ TEST_P (PluginInstrumentTest, SaveLoadRoundtripProducesSound)
   std::unique_ptr<juce::PluginDescription> juce_desc;
   if (GetParam ().format == PluginTestParam::Format::CLAP)
     {
-      juce_desc = test_helpers::find_bundled_clap_plugin_by_name (
+      juce_desc = test_helpers::find_test_clap_plugin_by_name (
         juce::String::fromUTF8 (GetParam ().plugin_name.data ()));
     }
   else
     {
-      juce_desc = test_helpers::find_bundled_vst3_plugin_by_name (
+      juce_desc = test_helpers::find_test_vst3_plugin_by_name (
         juce::String::fromUTF8 (GetParam ().plugin_name.data ()));
     }
   ASSERT_NE (juce_desc, nullptr);
@@ -381,18 +381,18 @@ class PluginParamSyncTest : public PluginIntegrationTestBase
 };
 
 INSTANTIATE_TEST_SUITE_P (
-  TripleSynth,
+  TestSynth,
   PluginParamSyncTest,
   testing::Values (
-    PluginTestParam{ "Triple Synth", PluginTestParam::Format::CLAP },
-    PluginTestParam{ "Triple Synth", PluginTestParam::Format::VST3 }));
+    PluginTestParam{ "Test Synth", PluginTestParam::Format::CLAP },
+    PluginTestParam{ "Test Synth", PluginTestParam::Format::VST3 }));
 
 INSTANTIATE_TEST_SUITE_P (
-  HighpassFilter,
+  TestGain,
   PluginParamSyncTest,
   testing::Values (
-    PluginTestParam{ "Highpass Filter", PluginTestParam::Format::CLAP },
-    PluginTestParam{ "Highpass Filter", PluginTestParam::Format::VST3 }));
+    PluginTestParam{ "Test Gain", PluginTestParam::Format::CLAP },
+    PluginTestParam{ "Test Gain", PluginTestParam::Format::VST3 }));
 
 TEST_P (PluginParamSyncTest, ParameterChangesReachPlugin)
 {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "commands/add_track_command.h"
-#include "plugins/internal_plugin_base.h"
+#include "plugins/faust/faust_plugin.h"
 #include "structure/tracks/track_all.h"
 #include "structure/tracks/track_collection.h"
 #include "utils/object_registry.h"
@@ -49,7 +49,7 @@ protected:
   create_and_append_plugin_to_channel (structure::tracks::Track &track)
   {
     auto * channel = track.channel ();
-    auto   ref = utils::create_object<plugins::InternalPluginBase> (
+    auto   ref = utils::create_object<plugins::FaustPlugin> (
       registry_, registry_, nullptr);
     channel->inserts ()->append_plugin (ref);
     return ref;

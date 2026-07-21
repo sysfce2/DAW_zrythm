@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
+#include "plugins/faust/faust_plugin.h"
 #include "plugins/plugin_configuration.h"
 #include "plugins/plugin_descriptor.h"
 #include "plugins/plugin_factory.h"
@@ -118,7 +119,7 @@ TEST_F (PluginFactoryTest, Construction)
 // Test plugin creation for different types using public API
 TEST_F (PluginFactoryTest, CreateDifferentPluginTypes)
 {
-  // Test InternalPluginBase creation
+  // Test FaustPlugin creation
   auto internal_config =
     create_test_configuration (Protocol::ProtocolType::Internal);
   auto internal_finish_options = PluginFactory::InstantiationFinishOptions{
@@ -127,8 +128,7 @@ TEST_F (PluginFactoryTest, CreateDifferentPluginTypes)
 
   auto internal_plugin_ref = factory_->create_plugin_from_setting (
     *internal_config, internal_finish_options);
-  auto * internal_plugin =
-    internal_plugin_ref.get_object_as<InternalPluginBase> ();
+  auto * internal_plugin = internal_plugin_ref.get_object_as<FaustPlugin> ();
   EXPECT_NE (internal_plugin, nullptr);
   EXPECT_EQ (internal_plugin->get_protocol (), Protocol::ProtocolType::Internal);
   EXPECT_TRUE (utils::contains (*registry_, internal_plugin->get_uuid ()));
@@ -172,8 +172,7 @@ TEST_F (PluginFactoryTest, CreatePluginFromSetting)
 
   auto internal_plugin_ref = factory_->create_plugin_from_setting (
     *internal_config, internal_finish_options);
-  auto * internal_plugin =
-    internal_plugin_ref.get_object_as<InternalPluginBase> ();
+  auto * internal_plugin = internal_plugin_ref.get_object_as<FaustPlugin> ();
   EXPECT_NE (internal_plugin, nullptr);
   EXPECT_EQ (internal_plugin->get_protocol (), Protocol::ProtocolType::Internal);
 
@@ -248,7 +247,7 @@ TEST_F (PluginFactoryTest, PluginConfigurationApplied)
 
   auto plugin_ref =
     factory_->create_plugin_from_setting (*config, finish_options);
-  auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+  auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
 
   EXPECT_NE (plugin, nullptr);
   EXPECT_EQ (plugin->get_name (), u8"Custom Test Plugin");
@@ -297,7 +296,7 @@ TEST_F (PluginFactoryTest, FactoryDependenciesUsed)
 
   auto plugin_ref =
     factory_->create_plugin_from_setting (*config, finish_options);
-  auto * plugin = plugin_ref.get_object_as<InternalPluginBase> ();
+  auto * plugin = plugin_ref.get_object_as<FaustPlugin> ();
 
   EXPECT_NE (plugin, nullptr);
 
@@ -327,7 +326,7 @@ TEST_F (PluginFactoryTest, MultiplePluginsIndependent)
     factory_->create_plugin_from_setting (*juce_config, finish_options);
 
   // Verify each plugin is independent
-  auto * plugin1 = ref1.get_object_as<InternalPluginBase> ();
+  auto * plugin1 = ref1.get_object_as<FaustPlugin> ();
   auto * plugin2 = ref2.get_object_as<ClapPlugin> ();
   auto * plugin3 = ref3.get_object_as<JucePlugin> ();
 

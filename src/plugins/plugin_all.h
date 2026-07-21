@@ -5,7 +5,7 @@
 
 // #include "plugins/carla_native_plugin.h"
 #include "plugins/clap_plugin.h"
-#include "plugins/internal_plugin_base.h"
+#include "plugins/faust/faust_plugin.h"
 #include "plugins/juce_plugin.h"
 
 namespace zrythm::plugins
@@ -19,17 +19,17 @@ plugin_ptr_variant_to_base (const PluginPtrVariant &var)
 inline auto
 plugin_base_to_ptr_variant (Plugin * pl) -> PluginPtrVariant
 {
-  if (auto * clap = dynamic_cast<ClapPlugin *> (pl))
+  if (auto * clap = qobject_cast<ClapPlugin *> (pl))
     {
       return clap;
     }
-  if (auto * juce = dynamic_cast<JucePlugin *> (pl))
+  if (auto * juce = qobject_cast<JucePlugin *> (pl))
     {
       return juce;
     }
-  if (auto * internal = dynamic_cast<InternalPluginBase *> (pl))
+  if (auto * faust = qobject_cast<FaustPlugin *> (pl))
     {
-      return internal;
+      return faust;
     }
   throw std::invalid_argument ("Invalid plugin ptr");
 }

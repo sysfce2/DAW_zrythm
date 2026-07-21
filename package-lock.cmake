@@ -37,24 +37,35 @@ CPMDeclarePackage(clap-helpers
   SYSTEM YES
   EXCLUDE_FROM_ALL YES
 )
-# clap-juce-extensions
-CPMDeclarePackage(clap-juce-extensions
-  NAME clap-juce-extensions
-  VERSION 0.1
-  GIT_TAG 36c0a14ab03918d4258eaba2ea40a3fadb992da6
-  GITHUB_REPOSITORY alex-tee/clap-juce-extensions
+# vst3sdk
+CPMDeclarePackage(vst3sdk
+  NAME vst3sdk
+  VERSION 3.8.0
+  GIT_TAG v3.8.0_build_66
+  GITHUB_REPOSITORY steinbergmedia/vst3sdk
+  # vstgui4/tutorials/doc submodules are not needed
+  GIT_SUBMODULES base cmake pluginterfaces public.sdk
+  # library targets are created manually via the SDK's cmake modules
+  DOWNLOAD_ONLY YES
   SYSTEM YES
   EXCLUDE_FROM_ALL YES
 )
 # juce
 CPMDeclarePackage(juce
   NAME juce
-  VERSION 8.0.13
-  GIT_TAG 7c9d3783b127263d72bb65fe0a7e2dc8a02a7ac2
+  VERSION 8.0.15
+  GIT_TAG 91ad83ae34a81e0833b1a2b0866f54846370ae53
   GITHUB_REPOSITORY juce-framework/JUCE
   SYSTEM YES
   EXCLUDE_FROM_ALL YES
   SBOM_LICENSE_CONCLUDED "LicenseRef-JUCE-Commercial OR AGPL-3.0-only"
+  PATCHES
+    # VST3 host: rescan the parameter cache from the IEditController after
+    # state restore and at instantiation, even when no IComponent state
+    # stream exists (the SDK requires hosts to rescan after state restore,
+    # and controller-only state blobs are legal). TODO: upstream to JUCE and
+    # drop this patch once merged.
+    ${CMAKE_CURRENT_LIST_DIR}/cmake/patches/juce-vst3-param-cache-resync.patch
 )
 # SndFile
 CPMDeclarePackage(SndFile

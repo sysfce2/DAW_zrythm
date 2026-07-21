@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "commands/add_plugin_command.h"
-#include "plugins/internal_plugin_base.h"
+#include "plugins/faust/faust_plugin.h"
 #include "plugins/plugin_group.h"
 #include "utils/object_registry.h"
 #include "utils/registry_utils.h"
@@ -28,7 +28,7 @@ protected:
 
   void create_test_plugin ()
   {
-    test_plugin_ref_ = utils::create_object<plugins::InternalPluginBase> (
+    test_plugin_ref_ = utils::create_object<plugins::FaustPlugin> (
       registry_, registry_, nullptr);
   }
 
@@ -68,10 +68,10 @@ TEST_F (AddPluginCommandTest, RedoAddsPluginAppend)
 TEST_F (AddPluginCommandTest, RedoAddsPluginAtIndex)
 {
   // Add some dummy plugins first
-  auto dummy_plugin1 = utils::create_object<plugins::InternalPluginBase> (
-    registry_, registry_, nullptr);
-  auto dummy_plugin2 = utils::create_object<plugins::InternalPluginBase> (
-    registry_, registry_, nullptr);
+  auto dummy_plugin1 =
+    utils::create_object<plugins::FaustPlugin> (registry_, registry_, nullptr);
+  auto dummy_plugin2 =
+    utils::create_object<plugins::FaustPlugin> (registry_, registry_, nullptr);
 
   plugin_group_->append_plugin (dummy_plugin1);
   plugin_group_->append_plugin (dummy_plugin2);
@@ -147,8 +147,8 @@ TEST_F (AddPluginCommandTest, CommandId)
 TEST_F (AddPluginCommandTest, MultiplePluginsSameGroup)
 {
   // Create second plugin
-  auto second_plugin_ref = utils::create_object<plugins::InternalPluginBase> (
-    registry_, registry_, nullptr);
+  auto second_plugin_ref =
+    utils::create_object<plugins::FaustPlugin> (registry_, registry_, nullptr);
 
   AddPluginCommand command1 (*plugin_group_, test_plugin_ref_);
   AddPluginCommand command2 (*plugin_group_, second_plugin_ref);
@@ -179,8 +179,8 @@ TEST_F (AddPluginCommandTest, MultiplePluginsSameGroup)
 TEST_F (AddPluginCommandTest, AddPluginAtIndexBeyondEnd)
 {
   // Add a dummy plugin first
-  auto dummy_plugin = utils::create_object<plugins::InternalPluginBase> (
-    registry_, registry_, nullptr);
+  auto dummy_plugin =
+    utils::create_object<plugins::FaustPlugin> (registry_, registry_, nullptr);
 
   plugin_group_->append_plugin (dummy_plugin);
 
@@ -199,8 +199,8 @@ TEST_F (AddPluginCommandTest, AddPluginAtIndexBeyondEnd)
 TEST_F (AddPluginCommandTest, AddPluginAtStart)
 {
   // Add a dummy plugin first
-  auto dummy_plugin = utils::create_object<plugins::InternalPluginBase> (
-    registry_, registry_, nullptr);
+  auto dummy_plugin =
+    utils::create_object<plugins::FaustPlugin> (registry_, registry_, nullptr);
 
   plugin_group_->append_plugin (dummy_plugin);
 

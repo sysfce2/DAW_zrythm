@@ -3,7 +3,7 @@
 
 #include "commands/move_plugins_command.h"
 #include "dsp/parameter.h"
-#include "plugins/internal_plugin_base.h"
+#include "plugins/faust/faust_plugin.h"
 #include "plugins/plugin_group.h"
 #include "structure/tracks/automation_tracklist.h"
 #include "utils/object_registry.h"
@@ -43,7 +43,7 @@ protected:
   plugins::PluginUuidReference
   create_and_append_plugin (plugins::PluginGroup &group)
   {
-    auto ref = utils::create_object<plugins::InternalPluginBase> (
+    auto ref = utils::create_object<plugins::FaustPlugin> (
       registry_, registry_, nullptr);
     group.append_plugin (ref);
     return ref;

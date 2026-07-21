@@ -116,6 +116,12 @@ private:
   void                         serialize_known_plugins ();
   void                         deserialize_known_plugins ();
 
+  /**
+   * @brief Adds descriptors for bundled internal (Faust) plugins to the known
+   * plugin list, if not already present.
+   */
+  void add_internal_plugins_to_known_list ();
+
 private:
   /** Plugin categories. */
   std::vector<utils::Utf8String> plugin_categories_;

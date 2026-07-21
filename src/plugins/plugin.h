@@ -429,9 +429,9 @@ private:
 class CarlaNativePlugin;
 class JucePlugin;
 class ClapPlugin;
-class InternalPluginBase;
+class FaustPlugin;
 
-using PluginVariant = std::variant<JucePlugin, ClapPlugin, InternalPluginBase>;
+using PluginVariant = std::variant<JucePlugin, ClapPlugin, FaustPlugin>;
 using PluginPtrVariant = utils::to_pointer_variant<PluginVariant>;
 
 using PluginUuidReference = utils::TypedUuidReference<Plugin>;

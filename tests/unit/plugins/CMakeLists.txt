@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 add_executable(zrythm_plugins_unit_tests
+  clap_plugin_test.cpp
+  faust_plugin_test.cpp
+  faust_synth_voice_test.cpp
   juce_plugin_test.cpp
   plugin_test.cpp
   plugin_descriptor_test.cpp

@@ -29,6 +29,7 @@ PluginDescriptor::from_juce_description (
       utils::Utf8String::from_juce_string (juce_desc.fileOrIdentifier);
     switch (descr->protocol_)
       {
+      case Protocol::ProtocolType::Internal:
       case Protocol::ProtocolType::LV2:
       case Protocol::ProtocolType::AudioUnit:
         descr->path_or_id_ = tmp;
@@ -81,6 +82,9 @@ PluginDescriptor::to_juce_description () const
   juce_desc->category = category_str_.to_juce_string ();
   juce_desc->uniqueId = static_cast<int> (unique_id_);
   juce_desc->deprecatedUid = juce_compat_deprecated_unique_id_;
+  juce_desc->isInstrument = category_ == PluginCategory::Instrument;
+  juce_desc->numInputChannels = num_audio_ins_;
+  juce_desc->numOutputChannels = num_audio_outs_;
   return juce_desc;
 }
 

@@ -61,9 +61,12 @@ target_link_libraries(zrythm_plugins_lib
     ${zrythm_link_libs}
     zrythm::all_compile_options
     zrythm_dsp_lib
+    $<$<TARGET_EXISTS:zrythm_faust_plugins>:zrythm_faust_plugins>
 )
 
 add_library(zrythm::plugins_lib ALIAS zrythm_plugins_lib)
+
+add_subdirectory(faust)
 
 # create a plugin so that types get exposed to QML
 qt_add_qml_module(zrythm_plugins_lib

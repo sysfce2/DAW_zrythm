@@ -42,14 +42,15 @@ protected:
   std::string save_state_impl () const override { return {}; }
   void        load_state_impl (const std::string &) override { }
 
-private Q_SLOTS:
+protected Q_SLOTS:
   /**
    * @brief Handle configuration changes.
    */
-  void on_configuration_changed (
+  virtual void on_configuration_changed (
     PluginConfiguration * configuration,
     bool                  generateNewPluginPortsAndParams);
 
+private Q_SLOTS:
   /**
    * @brief Handle visibility changes.
    */

@@ -15,6 +15,8 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+include(TargetHelpers)
+
 find_package(Git)
 
 set(VERSION_UPDATE_FROM_GIT ${GIT_FOUND})
@@ -188,8 +190,6 @@ if(ZRYTHM_TESTS)
 endif()
 cmake_dependent_option(ZRYTHM_BENCHMARKS "Build benchmarks" OFF "ZRYTHM_TESTS" OFF)
 cmake_dependent_option(ZRYTHM_QML_TESTS "Build QML tests" OFF "ZRYTHM_TESTS" OFF)
-option(ZRYTHM_BUNDLED_PLUGINS "Build and install bundled plugins" ON)
-option(ZRYTHM_BUNDLED_PLUGINS_WITH_STATIC_LINKING "Build bundled plugins with static libs (libgcc/libstdc++). Distros should turn this off" ON)
 option(ZRYTHM_MAINTAINER_MODE "Whether to enable maintainer options (only for use by Zrythm maintainers/developers)" OFF)
 cmake_dependent_option(ZRYTHM_IS_INSTALLER_VER "Build installer version" OFF "ZRYTHM_MAINTAINER_MODE" OFF)
 cmake_dependent_option(ZRYTHM_IS_TRIAL_VER "Build trial version" OFF "ZRYTHM_MAINTAINER_MODE" OFF)
@@ -245,7 +245,7 @@ include(FindPython3)
 if (${ZRYTHM_SHELL_COMPLETIONS})
   find_program(FLEX_EXECUTABLE "flex" REQUIRED)
 endif()
-find_program(FAUST2JUCE_EXECUTABLE "faust2juce")
+find_program(FAUST_EXECUTABLE "faust")
 find_program(ITSTOOL_EXECUTABLE itstool)
 if(APPLE)
   find_program(RSVG_CONVERT_EXECUTABLE rsvg-convert
@@ -837,7 +837,10 @@ find_package(nlohmann_json_schema_validator REQUIRED)
 
 CPMGetPackage(clap)
 CPMGetPackage(clap-helpers)
-CPMGetPackage(clap-juce-extensions)
+
+# VST3 SDK - creates the base/pluginterfaces/sdk_common/sdk/sdk_hosting targets
+CPMGetPackage(vst3sdk)
+include(SetupVst3Sdk)
 
 add_subdirectory(ext)
 
@@ -1114,101 +1117,8 @@ set(ext_lv2_plugins
   "test_signal|Test Signal|http://gareus.org/oss/lv2/testsignal"
   "kxstudio_lfo|KXStudio LFO|http://kxstudio.sf.net/carla/plugins/lfo")
 
-set(ext_vst_plugins
-  "noizemaker|TAL-NoiseMaker.so"
-)
-
-set(ext_vst3_plugins
-  "onetrick_simian|Punk Labs LLC OneTrick SIMIAN.vst3"
-  "dexed|Dexed.vst3"
-  "surge_xt|Surge XT.vst3"
-)
-
 # When using the lilv subproject, we can't use lv2ls and lv2info
 find_program(LV2INFO_EXECUTABLE lv2info)
-
-if(ZRYTHM_TESTS AND FALSE) # skip for now (maybe delete eventually)
-  find_program(LV2LS_EXECUTABLE lv2ls)
-
-  # Get LV2 bundle paths
-  if(LV2LS_EXECUTABLE AND LV2INFO_EXECUTABLE)
-    execute_process(
-      COMMAND ${LV2LS_EXECUTABLE}
-      OUTPUT_VARIABLE lv2ls_res
-      RESULT_VARIABLE lv2ls_result
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    if(lv2ls_result EQUAL 0)
-      foreach(plugin_info ${ext_lv2_plugins})
-        string(REPLACE "|" ";" plugin_info "${plugin_info}")
-        list(GET plugin_info 0 name)
-        list(GET plugin_info 2 uri)
-
-        if(lv2ls_res MATCHES "${uri}")
-          set(have_ext_lv2_plugins_${name} TRUE)
-
-          execute_process(
-            COMMAND ${LV2INFO_EXECUTABLE} ${uri}
-            OUTPUT_VARIABLE lv2info_output
-            RESULT_VARIABLE lv2info_result
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-          )
-
-          if(lv2info_result EQUAL 0)
-            string(REGEX MATCH "Bundle:[^\n]*" bundle_line "${lv2info_output}")
-            if(bundle_line)
-              string(REGEX REPLACE "Bundle:[ \t]*" "" bundle_uri "${bundle_line}")
-              set(ext_lv2_plugin_bundles_${name} "${bundle_uri}")
-            else()
-              message(WARNING "lv2info failed to find bundle uri for ${name}")
-            endif()
-          endif()
-        endif()
-      endforeach()
-    endif()
-  endif()
-
-  # Get VST plugin paths
-  find_program(GET_VST_PATH_EXECUTABLE get_vst_path.sh PATH tools)
-  if(GET_VST_PATH_EXECUTABLE)
-    foreach(plugin_info ${ext_vst_plugins})
-      string(REPLACE "|" ";" plugin_info "${plugin_info}")
-      list(GET plugin_info 0 name)
-      list(GET plugin_info 1 filename)
-
-      execute_process(
-        COMMAND ${GET_VST_PATH_EXECUTABLE} ${filename}
-        RESULT_VARIABLE vst_result
-        OUTPUT_VARIABLE vst_path
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
-
-      if(vst_result EQUAL 0)
-        set(have_ext_vst_plugins_${name} TRUE)
-        set(ext_vst_plugin_paths_${name} "${vst_path}")
-      endif()
-    endforeach()
-
-    foreach(plugin_info ${ext_vst3_plugins})
-      string(REPLACE "|" ";" plugin_info "${plugin_info}")
-      list(GET plugin_info 0 name)
-      list(GET plugin_info 1 filename)
-
-      execute_process(
-        COMMAND ${GET_VST_PATH_EXECUTABLE} "${filename}" 3
-        RESULT_VARIABLE vst3_result
-        OUTPUT_VARIABLE vst3_path
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-      )
-
-      if(vst3_result EQUAL 0)
-        set(have_ext_vst3_plugins_${name} TRUE)
-        set(ext_vst3_plugin_paths_${name} "${vst3_path}")
-      endif()
-    endforeach()
-  endif()
-endif() # ZRYTHM_TESTS
 
 # Add subdirectories
 add_subdirectory(data)

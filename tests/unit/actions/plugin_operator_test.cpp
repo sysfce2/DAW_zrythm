@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "actions/plugin_operator.h"
-#include "plugins/internal_plugin_base.h"
+#include "plugins/faust/faust_plugin.h"
 #include "plugins/plugin_group.h"
 #include "structure/tracks/automation_tracklist.h"
 #include "structure/tracks/track.h"
@@ -45,10 +45,10 @@ protected:
 
   plugins::Plugin * create_and_append_plugin (plugins::PluginGroup &group)
   {
-    auto ref = utils::create_object<plugins::InternalPluginBase> (
+    auto ref = utils::create_object<plugins::FaustPlugin> (
       registry_, registry_, nullptr);
     group.append_plugin (ref);
-    return ref.get_object_as<plugins::InternalPluginBase> ();
+    return ref.get_object_as<plugins::FaustPlugin> ();
   }
 
   static auto

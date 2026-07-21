@@ -74,12 +74,11 @@ stages:
     HOST_PROFILE: "clang_debug"
     SANITIZER_OPTION: "address_undefined"
     RTSAN_OPTIONS: "suppressions=$CI_PROJECT_DIR/tools/rtsan_suppressions.supp"
-    WITH_BUNDLED_PLUGINS: "ON"
   before_script:
     - *unix-activate-venv
   script:
     - conan install . -pr:h ${HOST_PROFILE} -pr:b gcc_release -o sanitizer="${SANITIZER_OPTION}" --build=missing --lockfile=conan.lock
-    - cmake --preset default -DZRYTHM_UNITY_BUILD=OFF -DZRYTHM_BUNDLED_PLUGINS=${WITH_BUNDLED_PLUGINS}
+    - cmake --preset default -DZRYTHM_UNITY_BUILD=OFF
     - cmake --build conanbuild/Debug --parallel
     - source conanbuild/Debug/generators/conanrun.sh && ctest --test-dir conanbuild/Debug --rerun-failed --output-on-failure
     - >-
@@ -320,8 +319,6 @@ check:sanitizer-thread:
   variables:
     HOST_PROFILE: "clang_tsan"
     SANITIZER_OPTION: "thread"
-    # Linker errors when building bundled plugins
-    WITH_BUNDLED_PLUGINS: "OFF"
 
 check:sanitizer-realtime:
   extends: .sanitizer-template
