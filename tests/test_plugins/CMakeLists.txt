@@ -58,6 +58,7 @@ foreach(vst3_fixture test_gain_vst3 test_synth_vst3)
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
   )
+  zrythm_fix_vst3_ninja_bundle_output_dir(${vst3_fixture})
 endforeach()
 
 add_library(test_gain_clap MODULE test_gain_clap.cpp)
@@ -87,13 +88,13 @@ add_custom_target(zrythm_test_plugins
 
 # Run the VST3 SDK validator on each test bundle (the validator requires the
 # bundle directory, not the module inside it)
-foreach(bundle_name "Test Gain" "Test Synth")
-  string(TOLOWER "${bundle_name}" test_suffix)
-  string(REPLACE " " "_" test_suffix "${test_suffix}")
-  add_test(
-    NAME vst3_validator_${test_suffix}
-    COMMAND
-      $<TARGET_FILE:validator>
-      "${CMAKE_CURRENT_BINARY_DIR}/VST3/$<CONFIG>/${bundle_name}.vst3"
-  )
-endforeach()
+add_test(
+  NAME vst3_validator_test_gain
+  COMMAND $<TARGET_FILE:validator>
+          "$<TARGET_PROPERTY:test_gain_vst3,SMTG_PLUGIN_PACKAGE_PATH>"
+)
+add_test(
+  NAME vst3_validator_test_synth
+  COMMAND $<TARGET_FILE:validator>
+          "$<TARGET_PROPERTY:test_synth_vst3,SMTG_PLUGIN_PACKAGE_PATH>"
+)
