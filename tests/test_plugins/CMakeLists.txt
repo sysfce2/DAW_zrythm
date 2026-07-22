@@ -4,6 +4,13 @@
 # Minimal VST3/CLAP test fixtures written directly against the official SDKs.
 # These replace the old faust2juce-generated bundled plugins in tests.
 
+# MSVC defaults __cplusplus to 201703L; the VST3 SDK's SMTG_CPP20 guard needs
+# the real value, else module_win32.cpp passes std::u8string where std::string
+# is expected.
+if(MSVC)
+  add_compile_options(/Zc:__cplusplus)
+endif()
+
 # VST3 validator from the SDK (provides the `validator` target)
 add_subdirectory(
   ${vst3sdk_SOURCE_DIR}/public.sdk/samples/vst-hosting/validator
