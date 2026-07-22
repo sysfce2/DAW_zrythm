@@ -46,9 +46,9 @@ foreach (vst3sdk_tgt base pluginterfaces sdk_common sdk sdk_hosting)
 endforeach ()
 target_link_libraries(base PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  # threadchecker_linux.cpp uses std::terminate() without including <exception>
-  # (fails with libc++; not fixed upstream as of v3.8.0_build_66)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  # threadchecker_{linux,mac}.{cpp,mm} use std::terminate() without including
+  # <exception> (fails with libc++; not fixed upstream as of v3.8.0_build_66)
   target_compile_options(sdk_common PRIVATE -include exception)
 endif ()
 
