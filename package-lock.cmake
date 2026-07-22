@@ -51,26 +51,18 @@ CPMDeclarePackage(vst3sdk
   EXCLUDE_FROM_ALL YES
 )
 # juce
+# Points at the zrythm/JUCE fork (branch: zrythm_fixes) which carries the
+# VST3 parameter-cache rescan fix that used to live in
+# cmake/patches/juce-vst3-param-cache-resync.patch. Drop this fork and return
+# to juce-framework/JUCE once that fix is merged upstream.
 CPMDeclarePackage(juce
   NAME juce
-  VERSION 8.0.15
-  GIT_TAG 91ad83ae34a81e0833b1a2b0866f54846370ae53
-  GITHUB_REPOSITORY juce-framework/JUCE
+  VERSION 9.0.0
+  GIT_TAG fa3d1a09871a7e683647d95e8ed45c74769ed742
+  GITHUB_REPOSITORY zrythm/JUCE
   SYSTEM YES
   EXCLUDE_FROM_ALL YES
   SBOM_LICENSE_CONCLUDED "LicenseRef-JUCE-Commercial OR AGPL-3.0-only"
-  # Keep the working tree's line endings as LF on Windows so the patch below
-  # (which expects LF source lines) applies cleanly. Without this, Git for
-  # Windows with the default core.autocrlf=true checks JUCE sources out as
-  # CRLF, and patch.exe fails with "different line endings".
-  GIT_CONFIG "core.autocrlf=false"
-  PATCHES
-    # VST3 host: rescan the parameter cache from the IEditController after
-    # state restore and at instantiation, even when no IComponent state
-    # stream exists (the SDK requires hosts to rescan after state restore,
-    # and controller-only state blobs are legal). TODO: upstream to JUCE and
-    # drop this patch once merged.
-    ${CMAKE_CURRENT_LIST_DIR}/cmake/patches/juce-vst3-param-cache-resync.patch
 )
 # SndFile
 CPMDeclarePackage(SndFile

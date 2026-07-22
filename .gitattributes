@@ -16,9 +16,3 @@ src/plugins/lv2/suil/*.mm linguist-vendored
 
 inc/**/*.h linguist-language=C
 tests/**/*.h linguist-language=C
-
-# Patches target vendored sources that are checked out with LF endings
-# (CPM GIT_CONFIG core.autocrlf=false). Force patches to LF too so they
-# apply cleanly on Windows where the default core.autocrlf=true would
-# otherwise convert them to CRLF on checkout.
-*.patch text eol=LF
