@@ -59,6 +59,11 @@ CPMDeclarePackage(juce
   SYSTEM YES
   EXCLUDE_FROM_ALL YES
   SBOM_LICENSE_CONCLUDED "LicenseRef-JUCE-Commercial OR AGPL-3.0-only"
+  # Keep the working tree's line endings as LF on Windows so the patch below
+  # (which expects LF source lines) applies cleanly. Without this, Git for
+  # Windows with the default core.autocrlf=true checks JUCE sources out as
+  # CRLF, and patch.exe fails with "different line endings".
+  GIT_CONFIG "core.autocrlf=false"
   PATCHES
     # VST3 host: rescan the parameter cache from the IEditController after
     # state restore and at instantiation, even when no IComponent state

@@ -467,13 +467,7 @@ SPDX-FileCopyrightText = "2022 Alexandros Theodotou <alex@zrythm.org>"
 SPDX-License-Identifier = "LicenseRef-ZrythmLicense"
 
 [[annotations]]
-path = "data/plugins/generated/**/**.cpp"
-precedence = "aggregate"
-SPDX-FileCopyrightText = ["", "2009-2016 Albert Graef <aggraef@gmail.com>", "2003-2022 GRAME, Centre National de Creation Musicale"]
-SPDX-License-Identifier = "LGPL-3.0-or-later"
-
-[[annotations]]
-path = "data/plugins/generated-juce/**/**.cpp"
+path = "data/plugins/generated-cpp/**/**.cpp"
 precedence = "aggregate"
 SPDX-FileCopyrightText = ["", "2009-2016 Albert Graef <aggraef@gmail.com>", "2003-2022 GRAME, Centre National de Creation Musicale"]
 SPDX-License-Identifier = "LGPL-3.0-or-later"

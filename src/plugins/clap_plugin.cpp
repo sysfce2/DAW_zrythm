@@ -1416,7 +1416,7 @@ ClapPlugin::create_ports_from_clap_plugin ()
           pimpl_->note_in_supported_dialects_.push_back (
             pimpl_->plugin_->notePortsGet (i, true, &info)
               ? info.supported_dialects
-              : CLAP_NOTE_DIALECT_MIDI);
+              : static_cast<uint32_t> (CLAP_NOTE_DIALECT_MIDI));
           auto port_ref = utils::create_object<dsp::MidiPort> (
             registry (),
             utils::Utf8String::from_utf8_encoded_string (

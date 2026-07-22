@@ -10,6 +10,8 @@
 #include "utils/logger.h"
 #include "utils/views.h"
 
+#include <scn/scan.h>
+
 namespace zrythm::plugins
 {
 
@@ -107,11 +109,8 @@ FaustPlugin::setup_faust (const faust::FaustPluginInfo &info, bool create_ports)
       if (
         const auto sv = meta.get ("zrythm_release_seconds").str (); !sv.empty ())
         {
-          float value = voice_release_seconds_;
-          auto [ptr, ec] =
-            std::from_chars (sv.data (), sv.data () + sv.size (), value);
-          if (ec == std::errc{} && value > 0.f)
-            voice_release_seconds_ = value;
+          if (auto r = scn::scan_value<float> (sv); r && r->value () > 0.f)
+            voice_release_seconds_ = r->value ();
           else
             z_warning ("invalid zrythm_release_seconds '{}', using default", sv);
         }
@@ -119,11 +118,8 @@ FaustPlugin::setup_faust (const faust::FaustPluginInfo &info, bool create_ports)
         const auto sv = meta.get ("zrythm_silence_threshold_db").str ();
         !sv.empty ())
         {
-          float value = voice_silence_threshold_db_;
-          auto [ptr, ec] =
-            std::from_chars (sv.data (), sv.data () + sv.size (), value);
-          if (ec == std::errc{})
-            voice_silence_threshold_db_ = value;
+          if (auto r = scn::scan_value<float> (sv); r)
+            voice_silence_threshold_db_ = r->value ();
           else
             z_warning (
               "invalid zrythm_silence_threshold_db '{}', using default", sv);

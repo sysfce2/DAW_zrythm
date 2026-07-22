@@ -4,8 +4,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <charconv>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string_view>
 
@@ -163,10 +163,9 @@ public:
   {
     if (paramId != kLevelParamId)
       return false;
-    double v = 0.0;
-    const auto [ptr, ec] =
-      std::from_chars (display, display + std::strlen (display), v);
-    if (ec != std::errc{})
+    char *       end = nullptr;
+    const double v = std::strtod (display, &end);
+    if (end == display)
       return false;
     *value = std::clamp (v, 0.0, 1.0);
     return true;
