@@ -274,10 +274,10 @@ FaustPlugin::prepare_plugin_for_processing (
 
   // Validate that the port channel counts match the dsp's expectations, so
   // process_fx never passes nullptr channel pointers to compute().
-  int in_ch = 0;
+  [[maybe_unused]] int in_ch = 0;
   for (const auto * port : audio_in_ports_)
     in_ch += static_cast<int> (port->num_channels ());
-  int out_ch = 0;
+  [[maybe_unused]] int out_ch = 0;
   for (const auto * port : audio_out_ports_)
     out_ch += static_cast<int> (port->num_channels ());
   assert (in_ch == dsp_->getNumInputs ());

@@ -65,7 +65,8 @@ PluginLibrary::load (const utils::Utf8String &path)
   impl_->library.setFileName (load_path.to_qstring ());
   impl_->library.setLoadHints (
     QLibrary::ResolveAllSymbolsHint
-#if !defined(__has_feature) || !__has_feature(address_sanitizer)
+#if !defined(__has_feature) \
+  || (!__has_feature(address_sanitizer) && !__has_feature(thread_sanitizer))
     | QLibrary::DeepBindHint
 #endif
   );
