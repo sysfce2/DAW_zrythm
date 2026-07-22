@@ -98,9 +98,14 @@ add_subdirectory(benchmarks)
 add_subdirectory(test_plugins)
 
 # Pass the plugin search paths to the tests
+# Derive the VST3 search path from the SDK's own SMTG_PLUGIN_PACKAGE_PATH
+# property: on GNU/Linux and macOS Ninja the bundles are at VST3/<config>/, but
+# on Windows with SMTG_CUSTOM_BINARY_LOCATION they are directly at VST3/.
+get_target_property(vst3_pkg_path test_gain_vst3 SMTG_PLUGIN_PACKAGE_PATH)
+get_filename_component(vst3_search_path "${vst3_pkg_path}" DIRECTORY)
 target_compile_definitions(zrythm_test_helpers_lib
   PUBLIC
-    TEST_VST3_SEARCH_PATHS="${CMAKE_CURRENT_BINARY_DIR}/test_plugins/VST3/$<CONFIG>"
+    TEST_VST3_SEARCH_PATHS="${vst3_search_path}"
     TEST_CLAP_SEARCH_PATHS="${CMAKE_CURRENT_BINARY_DIR}/test_plugins/CLAP/$<CONFIG>"
     # 2 VST3 bundles; CLAP: Test Gain bundle + Test Synth bundle containing
     # both dialect variants of the synth
