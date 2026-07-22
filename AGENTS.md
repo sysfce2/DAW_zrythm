@@ -44,6 +44,26 @@ ctest --test-dir conanbuild/Debug -N
 
 When investigating a test failure, run the failing test alone with `--output-on-failure` and **do not clip the output** — the full output (including ASan stack traces, assertion messages, and gtest logs) is often needed to diagnose the root cause. Use `-R "<TestName>"` to isolate a single test.
 
+**Prefer batch-mode scripted GDB for debugging over adding temporary printfs.** Breakpoint command lists log values and auto-continue, giving you printf-style tracing without modifying code or rebuilding, and without an interactive session. Write a small script and run it with `gdb -batch -x`:
+
+```gdb
+# /tmp/trace.gdb
+set pagination off
+break some_file.cpp:64
+commands
+silent
+printf "raw_state.size() = %d\n", raw_state.size()
+continue
+end
+run
+```
+
+```bash
+gdb -batch -x /tmp/trace.gdb --args ./conanbuild/Debug/products/bin/zrythm_integration_tests --gtest_filter=SomeTest
+```
+
+Tips: under ASan/LSan, set `ASAN_OPTIONS=detect_leaks=0 LSAN_OPTIONS=detect_leaks=0` (LSan aborts under ptrace). Method calls are often inlined in Debug builds and can't be evaluated in `printf`/`call` — break on each `return`/branch line instead to determine which path executes, use `dump binary memory <file> <start> <end>` to capture buffers, and use `catch throw` with `bt` to find where an exception originates. GDB also has `dprintf` (dynamic printf) for simple print-and-continue cases.
+
 **All tests are assumed to pass at each commit.** If a test fails after uncommitted changes, it is almost always those changes' fault — do not waste time checking whether the test was already broken.
 
 ```bash
