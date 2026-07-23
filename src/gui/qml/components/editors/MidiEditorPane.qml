@@ -140,9 +140,9 @@ GridLayout {
     id: pianoRollKeysScrollView
 
     Layout.fillHeight: true
-    Layout.preferredHeight: 480
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+    implicitHeight: midiArranger.implicitHeight
 
     PianoRollKeys {
       id: pianoRollKeys

@@ -58,7 +58,6 @@ GridLayout {
     id: placeholderLegend
 
     Layout.fillHeight: true
-    Layout.preferredHeight: 480
   }
 
   UnifiedProxyModel {

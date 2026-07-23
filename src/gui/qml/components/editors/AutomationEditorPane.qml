@@ -68,7 +68,6 @@ GridLayout {
     id: automationLegend
 
     Layout.fillHeight: true
-    Layout.preferredHeight: 480
   }
 
   UnifiedProxyModel {

@@ -15,6 +15,7 @@ ScrollView {
 
   ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
   contentWidth: availableWidth
+  implicitWidth: content.implicitWidth + (ScrollBar.vertical.visible ? ScrollBar.vertical.width : 0)
 
   ColumnLayout {
     id: content

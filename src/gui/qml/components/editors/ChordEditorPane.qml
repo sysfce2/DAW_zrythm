@@ -106,6 +106,7 @@ GridLayout {
     Layout.preferredWidth: 120
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+    implicitHeight: chordArranger.implicitHeight
 
     ChordRowLabels {
       id: rowLabels

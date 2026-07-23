@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2024-2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2024-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 pragma ComponentBehavior: Bound
@@ -19,6 +19,7 @@ ColumnLayout {
 
   signal pluginClicked(Plugin plugin)
 
+  implicitHeight: centerTabBar.implicitHeight + (mainStack.children[mainStack.currentIndex]?.implicitHeight ?? 0)
   spacing: 0
 
   StackLayout {

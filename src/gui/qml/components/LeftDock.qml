@@ -22,6 +22,8 @@ ColumnLayout {
   required property Tracklist tracklist
   required property UndoStack undoStack
 
+  implicitWidth: Math.max(tabBar.implicitWidth, stackLayout.children[stackLayout.currentIndex]?.implicitWidth ?? 0)
+
   Connections {
     function onInspectorRequested(plugin) {
       root.selectedPlugin = plugin;
@@ -54,6 +56,8 @@ ColumnLayout {
   }
 
   StackLayout {
+    id: stackLayout
+
     Layout.fillHeight: true
     Layout.fillWidth: true
     currentIndex: tabBar.currentIndex

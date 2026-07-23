@@ -327,7 +327,7 @@ ApplicationWindow {
         id: leftDock
 
         SplitView.fillHeight: true
-        SplitView.minimumWidth: 40
+        SplitView.minimumWidth: implicitWidth
         SplitView.preferredWidth: 200
         deviceManager: root.deviceManager
         pluginImporter: root.session.pluginImporter
@@ -351,10 +351,9 @@ ApplicationWindow {
         CenterDock {
           id: centerDock
 
-          Layout.verticalStretchFactor: 2
           SplitView.fillHeight: true
           SplitView.fillWidth: true
-          SplitView.minimumHeight: implicitHeight
+          SplitView.minimumHeight: 120
           SplitView.preferredHeight: 200
           cacheActivityAggregator: cacheActivityAggregator
           session: root.session
@@ -362,10 +361,8 @@ ApplicationWindow {
         }
 
         BottomDock {
-          Layout.verticalStretchFactor: 1
-          SplitView.fillHeight: true
           SplitView.fillWidth: true
-          SplitView.minimumHeight: 40
+          SplitView.minimumHeight: implicitHeight
           SplitView.preferredHeight: 240
           chordPresetManager: root.chordPresetManager
           session: root.session
@@ -382,7 +379,7 @@ ApplicationWindow {
         id: rightDock
 
         SplitView.fillHeight: true
-        SplitView.minimumWidth: 30
+        SplitView.minimumWidth: implicitWidth
         SplitView.preferredWidth: 200
         pluginImporter: root.session.pluginImporter
         project: root.project

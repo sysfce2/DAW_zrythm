@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2024-2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2024-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 import QtQuick
@@ -12,6 +12,8 @@ ColumnLayout {
 
   required property PluginImporter pluginImporter
   required property Project project
+
+  implicitWidth: Math.max(tabBar.implicitWidth, stackLayout.children[stackLayout.currentIndex]?.implicitWidth ?? 0)
 
   TabBar {
     id: tabBar
@@ -53,6 +55,8 @@ ColumnLayout {
   }
 
   StackLayout {
+    id: stackLayout
+
     Layout.fillHeight: true
     Layout.fillWidth: true
     currentIndex: tabBar.currentIndex
