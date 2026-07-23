@@ -38,10 +38,8 @@ public:
   /**
    * Creates an audio clip from a file.
    *
-   * The clip's source BPM (@ref bpm_) is read from the file's metadata; if the
-   * file carries no BPM metadata it is left as 0 (unknown) and musical mode
-   * cannot be applied until the BPM is supplied. The basename of the file is
-   * used as the clip name.
+   * The clip's source BPM (@ref bpm_) is initialized from the file. The
+   * basename of the file is used as the clip name.
    *
    * @throw ZrythmException on error.
    */
@@ -110,10 +108,10 @@ public:
   /**
    * @brief The clip's permanent source BPM (its intrinsic musical tempo).
    *
-   * Set once at construction: from file metadata for file-loaded clips, or
-   * from the value supplied by the caller (e.g. the project tempo at recording
-   * time) for buffer-backed clips. Used to compute musical-mode stretch
-   * ratios. A value of 0 means "unknown" — musical mode cannot be applied.
+   * Used to compute musical-mode stretch ratios. A value of 0 means
+   * "unknown" — musical mode cannot be applied.
+   *
+   * @see bpm_ for how this is initialized.
    */
   auto        source_bpm () const { return bpm_; }
   const auto &get_samples () const { return ch_frames_; }
@@ -173,11 +171,10 @@ public:
    * @brief Initializes members from an audio file.
    *
    * @param full_path Path to the file.
-   * @param bpm_to_set Optional source BPM to use instead of the file's metadata
-   *                   BPM. Used when reloading a project to preserve the
-   *                   previously stored value. If nullopt (or <= 0), the BPM
-   *                   read from file metadata is kept (0 if the file carries
-   *                   none).
+   * @param bpm_to_set Optional source BPM override. Used when reloading a
+   *                   project to preserve the previously stored value. If
+   *                   nullopt, the BPM is auto-detected from the file (see
+   *                   @ref bpm_).
    *
    * @throw ZrythmException on I/O error.
    */
@@ -209,8 +206,9 @@ private:
   /**
    * The clip's permanent source BPM — its intrinsic musical tempo.
    *
-   * For file-loaded clips this comes from the file's metadata (0 if none).
-   * For buffer-backed clips (recording, duplication) it is supplied by the
+   * For file-loaded clips this comes from the file's metadata, or from tempo
+   * estimation when the metadata carries none (0 if estimation fails). For
+   * buffer-backed clips (recording, duplication) it is supplied by the
    * caller. Used to compute musical-mode stretch ratios; 0 means "unknown".
    *
    * @see source_bpm()

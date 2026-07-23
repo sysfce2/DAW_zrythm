@@ -979,6 +979,7 @@ endif()
 
 find_package(TBB REQUIRED)
 CPMGetPackage(farbot)
+CPMGetPackage(loop-tempo-estimator)
 
 if(ZRYTHM_TRACY)
   find_package(Tracy REQUIRED)

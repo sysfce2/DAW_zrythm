@@ -33,6 +33,7 @@ target_sources(zrythm_dsp_lib
     graph_thread.cpp
     juce_hardware_audio_interface.cpp
     kmeter_dsp.cpp
+    loop_tempo_estimator.cpp
     metronome.cpp
     midi_device_buffer.cpp
     midi_event.cpp
@@ -106,6 +107,7 @@ target_sources(zrythm_dsp_lib
       itransport.h
       juce_hardware_audio_interface.h
       kmeter_dsp.h
+      loop_tempo_estimator.h
       metronome.h
       midi_device_buffer.h
       midi_activity_provider.h
@@ -165,6 +167,8 @@ target_link_libraries(zrythm_dsp_lib
     zrythm::utils_lib
     zrythm::include_dirs
     zrythm::all_compile_options
+  PRIVATE
+    loop-tempo-estimator
 )
 
 # create a plugin so that types get exposed to QML

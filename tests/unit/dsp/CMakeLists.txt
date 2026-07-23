@@ -28,6 +28,7 @@ add_executable(zrythm_dsp_unit_tests
   graph_scheduler_test.cpp
   graph_test.cpp
   kmeter_dsp_test.cpp
+  loop_tempo_estimator_test.cpp
   metronome_test.cpp
   midi_activity_provider_test.cpp
   midi_device_buffer_test.cpp

@@ -248,6 +248,17 @@ CPMDeclarePackage(farbot
   SYSTEM YES
   EXCLUDE_FROM_ALL YES
 )
+# loop-tempo-estimator
+CPMDeclarePackage(loop-tempo-estimator
+  NAME loop-tempo-estimator
+  VERSION 0.0.4
+  # v0.0.4
+  GIT_TAG 6579ae01f99ba90ef47826c7ab117c6af779832e
+  GITHUB_REPOSITORY saintmatthieu/loop-tempo-estimator
+  SOURCE_SUBDIR source
+  SYSTEM YES
+  EXCLUDE_FROM_ALL YES
+)
 # mp-units
 CPMDeclarePackage(mp-units
   NAME mp-units

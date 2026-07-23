@@ -9,6 +9,7 @@
 #include <fmt/std.h>
 
 #include "dsp/file_audio_source.h"
+#include "dsp/loop_tempo_estimator.h"
 #include "dsp/panning.h"
 #include "utils/audio.h"
 #include "utils/audio_file.h"
@@ -104,6 +105,19 @@ FileAudioSource::init_from_file (
   if (bpm_to_set.has_value () && bpm_to_set.value () > units::bpm (0.0))
     {
       bpm_ = bpm_to_set.value ();
+    }
+  else if (!bpm_to_set.has_value () && bpm_ <= units::bpm (0.0))
+    {
+      /* no BPM in metadata and no override: attempt to estimate the tempo
+       * (only done on fresh imports - the stored value is authoritative when
+       * reloading) */
+      if (const auto estimated_bpm = estimate_loop_bpm (ch_frames_, samplerate_))
+        {
+          z_debug (
+            "estimated BPM of '{}' as {}", full_path,
+            estimated_bpm->in (units::bpm));
+          bpm_ = *estimated_bpm;
+        }
     }
 
   Q_EMIT samplesChanged ();
