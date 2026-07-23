@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2018-2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2018-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "zrythm-config.h"
@@ -17,6 +17,21 @@
 using namespace Qt::StringLiterals;
 
 using namespace zrythm::gui::old_dsp::plugins;
+
+bool
+zrythm::gui::old_dsp::plugins::known_plugin_file_missing (
+  const juce::PluginDescription &desc)
+{
+  // internal (Faust) plugins are not file-based
+  if (desc.pluginFormatName == "Internal")
+    return false;
+
+  // only prune absolute file paths (other formats use identifiers or URIs)
+  if (!juce::File::isAbsolutePath (desc.fileOrIdentifier))
+    return false;
+
+  return !juce::File (desc.fileOrIdentifier).exists ();
+}
 
 PluginManager::PluginManager (
   zrythm::plugins::ProtocolPluginPathsProvider plugin_paths_provider,
@@ -212,6 +227,22 @@ PluginManager::deserialize_known_plugins ()
         {
           z_warning (
             "Failed to load known plugins from {}", known_plugins_xml_path_str);
+        }
+
+      // prune entries whose plugin files no longer exist
+      const auto types = known_plugin_list_->getTypes ();
+      int        num_pruned = 0;
+      for (const auto &desc : types)
+        {
+          if (known_plugin_file_missing (desc))
+            {
+              known_plugin_list_->removeType (desc);
+              ++num_pruned;
+            }
+        }
+      if (num_pruned > 0)
+        {
+          z_info ("Pruned {} known plugins with missing files", num_pruned);
         }
     }
   else

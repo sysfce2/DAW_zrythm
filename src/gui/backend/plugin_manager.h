@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2018-2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2018-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #pragma once
@@ -13,6 +13,16 @@
 
 namespace zrythm::gui::old_dsp::plugins
 {
+
+/**
+ * @brief Returns whether the given known plugin list entry refers to a plugin
+ * file that no longer exists.
+ *
+ * Only file-based formats whose fileOrIdentifier is an absolute path are
+ * considered; internal and other non-file-based entries always return false.
+ */
+bool
+known_plugin_file_missing (const juce::PluginDescription &desc);
 
 /**
  * The PluginManager is responsible for scanning and keeping track of available
