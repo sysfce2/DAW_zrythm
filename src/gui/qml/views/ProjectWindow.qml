@@ -110,6 +110,16 @@ ApplicationWindow {
   }
 
   Connections {
+    function onInstantiationFailed(pluginName, error) {
+      alertDialog.text = qsTr("Plugin Instantiation Failed");
+      alertDialog.informativeText = qsTr("Failed to instantiate plugin %1:\n\n%2").arg(pluginName).arg(error);
+      alertDialog.open();
+    }
+
+    target: root.session.pluginImporter
+  }
+
+  Connections {
     function onRowsAboutToBeRemoved(modelIndex: var, first: int, last: int) {
       // Auto-deselect tracks when removed from the project
       for (let i = first; i <= last; ++i) {

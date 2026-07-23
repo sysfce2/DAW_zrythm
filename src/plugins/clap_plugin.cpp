@@ -309,12 +309,17 @@ ClapPlugin::on_configuration_changed (
   bool                  generateNewPluginPortsAndParams)
 {
   z_debug ("configuration changed");
+  const auto &path = std::get<std::filesystem::path> (
+    configuration ()->descriptor ()->path_or_id_);
   auto success = load_plugin (
-    std::get<std::filesystem::path> (
-      configuration ()->descriptor ()->path_or_id_),
-    configuration ()->descriptor ()->unique_id_,
+    path, configuration ()->descriptor ()->unique_id_,
     generateNewPluginPortsAndParams);
-  Q_EMIT instantiationFinished (success, {});
+  Q_EMIT instantiationFinished (
+    success,
+    success
+      ? QString{}
+      : tr ("Failed to load CLAP plugin from %1")
+          .arg (utils::Utf8String::from_path (path).to_qstring ()));
 }
 
 bool

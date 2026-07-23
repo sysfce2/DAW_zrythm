@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "actions/plugin_importer.h"
@@ -201,8 +201,7 @@ protected:
   // Test tracking
   bool                         instantiation_finished_called_;
   plugins::PluginUuidReference last_instantiated_plugin_ref_{ registry_ };
-  plugins::PluginFactory::InstantiationFinishedHandler
-    instantiation_finished_handler_;
+  PluginImporter::PluginImportedHandler instantiation_finished_handler_;
 
   units::sample_rate_t sample_rate_{ units::sample_rate (48000) };
   units::sample_u32_t  buffer_size_{ units::samples (1024u) };
@@ -402,25 +401,40 @@ TEST_F (PluginImporterTest, PluginAddedToCorrectGroup)
   EXPECT_GE (instrument_track->channel ()->instruments ()->rowCount (), 1);
 }
 
-// Test with different plugin protocols
-TEST_F (PluginImporterTest, ImportDifferentProtocols)
+// Test that failed instantiation (e.g. missing plugin file) does not import
+// the plugin and emits a failure signal
+TEST_F (PluginImporterTest, FailedInstantiationSkipsImport)
 {
-  // Test with CLAP protocol
-  auto clap_descriptor = create_test_descriptor (
-    plugins::Protocol::ProtocolType::CLAP, false, false);
-  plugin_importer_->importPluginToNewTrack (clap_descriptor.get ());
-  QCoreApplication::processEvents ();
-  EXPECT_TRUE (instantiation_finished_called_);
+  const auto test_failure = [&] (plugins::Protocol::ProtocolType protocol) {
+    auto descriptor = create_test_descriptor (protocol, false, false);
+    descriptor->name_ = u8"Failing Plugin";
 
-  // Reset handler flag
-  instantiation_finished_called_ = false;
+    QSignalSpy failure_spy (
+      plugin_importer_.get (), &PluginImporter::instantiationFailed);
 
-  // Test with VST3 protocol
-  auto vst3_descriptor = create_test_descriptor (
-    plugins::Protocol::ProtocolType::VST3, false, false);
-  plugin_importer_->importPluginToNewTrack (vst3_descriptor.get ());
-  QCoreApplication::processEvents ();
-  EXPECT_TRUE (instantiation_finished_called_);
+    const auto initial_track_count = track_collection_->track_count ();
+    const auto initial_undo_count = undo_stack_->count ();
+    instantiation_finished_called_ = false;
+
+    plugin_importer_->importPluginToNewTrack (descriptor.get ());
+    QCoreApplication::processEvents ();
+
+    // Failure signal emitted with the plugin name and an error message
+    ASSERT_EQ (failure_spy.count (), 1);
+    const auto args = failure_spy.takeFirst ();
+    EXPECT_EQ (args.at (0).toString (), u"Failing Plugin");
+    EXPECT_FALSE (args.at (1).toString ().isEmpty ());
+
+    // Nothing imported
+    EXPECT_FALSE (instantiation_finished_called_);
+    EXPECT_EQ (track_collection_->track_count (), initial_track_count);
+    EXPECT_EQ (undo_stack_->count (), initial_undo_count);
+  };
+
+  // CLAP with a nonexistent file
+  test_failure (plugins::Protocol::ProtocolType::CLAP);
+  // VST3 (the mock instance creation function always fails)
+  test_failure (plugins::Protocol::ProtocolType::VST3);
 }
 
 // Test that undo macro is properly created

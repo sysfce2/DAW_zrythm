@@ -1,10 +1,12 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "utils/format_qt.h"
 
 #include "actions/plugin_importer.h"
 #include "commands/add_plugin_command.h"
+
+#include <QTimer>
 
 namespace zrythm::actions
 {
@@ -13,9 +15,8 @@ PluginImporter::PluginImporter (
   undo::UndoStack        &undo_stack,
   plugins::PluginFactory &plugin_factory,
   const TrackCreator     &track_creator,
-  plugins::PluginFactory::InstantiationFinishedHandler
-            instantiation_finished_handler,
-  QObject * parent)
+  PluginImportedHandler   instantiation_finished_handler,
+  QObject *               parent)
     : QObject (parent), undo_stack_ (undo_stack),
       plugin_factory_ (plugin_factory), track_creator_ (track_creator),
       instantiation_finished_handler_ (std::move (instantiation_finished_handler))
@@ -73,10 +74,25 @@ PluginImporter::import (
     *config,
     plugins::PluginFactory::InstantiationFinishOptions{
       .handler_ =
-        [this, track_or_group,
-         index] (plugins::PluginUuidReference inner_plugin_ref) {
+        [this, track_or_group, index] (
+          plugins::PluginUuidReference inner_plugin_ref, bool successful,
+          const QString &error) {
           const auto * descr =
             inner_plugin_ref.get ()->configuration ()->descriptor ();
+          if (!successful)
+            {
+              z_warning (
+                "Failed to instantiate plugin {}: {}", descr->name (),
+                error.toStdString ());
+              Q_EMIT instantiationFailed (descr->name (), error);
+
+              // Keep the plugin alive until the ongoing instantiationFinished
+              // emission completes: the factory's single-shot connection
+              // releases its own reference during emission, and the plugin is
+              // deleted once the last reference is released
+              QTimer::singleShot (0, this, [inner_plugin_ref] () { });
+              return;
+            }
           z_debug ("Plugin instance ready. Importing {}", descr->name ());
 
           // Begin macro for undo/redo

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "plugins/faust/faust_plugin.h"
@@ -123,7 +123,8 @@ TEST_F (PluginFactoryTest, CreateDifferentPluginTypes)
   auto internal_config =
     create_test_configuration (Protocol::ProtocolType::Internal);
   auto internal_finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto internal_plugin_ref = factory_->create_plugin_from_setting (
@@ -136,7 +137,8 @@ TEST_F (PluginFactoryTest, CreateDifferentPluginTypes)
   // Test ClapPlugin creation
   auto clap_config = create_test_configuration (Protocol::ProtocolType::CLAP);
   auto clap_finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto clap_plugin_ref =
@@ -149,7 +151,8 @@ TEST_F (PluginFactoryTest, CreateDifferentPluginTypes)
   // Test JucePlugin creation
   auto juce_config = create_test_configuration (Protocol::ProtocolType::VST3);
   auto juce_finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto juce_plugin_ref =
@@ -167,7 +170,8 @@ TEST_F (PluginFactoryTest, CreatePluginFromSetting)
   auto internal_config =
     create_test_configuration (Protocol::ProtocolType::Internal);
   auto internal_finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto internal_plugin_ref = factory_->create_plugin_from_setting (
@@ -179,7 +183,8 @@ TEST_F (PluginFactoryTest, CreatePluginFromSetting)
   // Test CLAP protocol
   auto clap_config = create_test_configuration (Protocol::ProtocolType::CLAP);
   auto clap_finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto clap_plugin_ref =
@@ -191,7 +196,8 @@ TEST_F (PluginFactoryTest, CreatePluginFromSetting)
   // Test VST3 protocol (should use JucePlugin)
   auto vst3_config = create_test_configuration (Protocol::ProtocolType::VST3);
   auto vst3_finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto vst3_plugin_ref =
@@ -215,7 +221,7 @@ TEST_F (PluginFactoryTest, PluginRegistration)
         fmt::format ("Test Plugin {}", i));
 
       auto finish_options = PluginFactory::InstantiationFinishOptions{
-        .handler_ = [] (plugins::PluginUuidReference) { },
+        .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
         .handler_context_ = nullptr
       };
 
@@ -242,7 +248,8 @@ TEST_F (PluginFactoryTest, PluginConfigurationApplied)
 
   // Use create_plugin_from_setting to apply configuration
   auto finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto plugin_ref =
@@ -262,7 +269,8 @@ TEST_F (PluginFactoryTest, InstantiationFinishedHandlerAsync)
 
   auto finish_options = PluginFactory::InstantiationFinishOptions{
     .handler_ =
-      [&received_ref, &handler_called] (plugins::PluginUuidReference ref) {
+      [&received_ref, &handler_called] (
+        plugins::PluginUuidReference ref, bool, const QString &) {
         handler_called = true;
         received_ref = ref;
       },
@@ -291,7 +299,8 @@ TEST_F (PluginFactoryTest, FactoryDependenciesUsed)
 {
   auto config = create_test_configuration (Protocol::ProtocolType::Internal);
   auto finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto plugin_ref =
@@ -314,7 +323,8 @@ TEST_F (PluginFactoryTest, MultiplePluginsIndependent)
   auto juce_config = create_test_configuration (Protocol::ProtocolType::VST3);
 
   auto finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   // Create plugins
@@ -371,7 +381,8 @@ TEST_F (PluginFactoryTest, SampleRateAndBufferSizeProviders)
 
   auto juce_config = create_test_configuration (Protocol::ProtocolType::VST3);
   auto finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   auto plugin_ref =
@@ -390,7 +401,8 @@ TEST_F (PluginFactoryTest, ErrorHandling)
   // invalid_config->descr_ is null
 
   auto finish_options = PluginFactory::InstantiationFinishOptions{
-    .handler_ = [] (plugins::PluginUuidReference) { }, .handler_context_ = nullptr
+    .handler_ = [] (plugins::PluginUuidReference, bool, const QString &) { },
+    .handler_context_ = nullptr
   };
 
   EXPECT_THROW (

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #pragma once
@@ -20,13 +20,19 @@ class PluginImporter : public QObject
   QML_UNCREATABLE ("")
 
 public:
+  /**
+   * @brief Handler invoked when an imported plugin has been successfully
+   * instantiated and added to the project.
+   */
+  using PluginImportedHandler =
+    std::function<void (plugins::PluginUuidReference)>;
+
   explicit PluginImporter (
     undo::UndoStack        &undo_stack,
     plugins::PluginFactory &plugin_factory,
     const TrackCreator     &track_creator,
-    plugins::PluginFactory::InstantiationFinishedHandler
-              instantiation_finished_handler,
-    QObject * parent = nullptr);
+    PluginImportedHandler   instantiation_finished_handler,
+    QObject *               parent = nullptr);
 
   /**
    * @brief Imports a plugin instance from a descriptor.
@@ -44,6 +50,13 @@ public:
   Q_INVOKABLE void importPluginToTrack (
     const plugins::PluginDescriptor * descriptor,
     structure::tracks::Track *        track);
+
+  /**
+   * @brief Emitted when a plugin requested via one of the import methods fails
+   * to instantiate.
+   */
+  Q_SIGNAL void
+  instantiationFailed (const QString &pluginName, const QString &error);
 
 private:
   /**
@@ -65,8 +78,7 @@ private:
   undo::UndoStack        &undo_stack_;
   plugins::PluginFactory &plugin_factory_;
   const TrackCreator     &track_creator_;
-  plugins::PluginFactory::InstantiationFinishedHandler
-    instantiation_finished_handler_;
+  PluginImportedHandler   instantiation_finished_handler_;
 };
 
 } // namespace zrythm::actions

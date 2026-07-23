@@ -34,7 +34,7 @@ public:
   // synchronously (depending on the plugin format) when the plugin has finished
   // instantiation
   using InstantiationFinishedHandler =
-    std::function<void (plugins::PluginUuidReference)>;
+    std::function<void (plugins::PluginUuidReference, bool, const QString &)>;
 
   struct InstantiationFinishOptions
   {
@@ -122,9 +122,11 @@ private:
           QObject::connect (
             plugin, &zrythm::plugins::Plugin::instantiationFinished,
             instantiation_finish_opts.handler_context_,
-            [obj_ref, instantiation_finish_opts] () {
-              instantiation_finish_opts.handler_ (obj_ref);
-            });
+            [obj_ref,
+             instantiation_finish_opts] (bool successful, const QString &error) {
+              instantiation_finish_opts.handler_ (obj_ref, successful, error);
+            },
+            Qt::SingleShotConnection);
         }
 
       if (setting_.has_value ())
