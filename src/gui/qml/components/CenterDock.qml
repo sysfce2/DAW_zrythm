@@ -265,23 +265,15 @@ ColumnLayout {
               if (current) {
                 const arrangerObject = getObjectFromUnifiedIndex(current);
                 if (ArrangerObjectHelper.isClip(arrangerObject)) {
-                  console.log("current clip changed, setting clip editor clip to ", arrangerObject.name.name);
                   root.session.uiState.clipEditor.setClip(arrangerObject, root.project.tracklist.getTrackForTimelineObject(arrangerObject));
                 }
               }
             }
             onSelectionChanged: (selected, deselected) => {
-              console.log("Selection changed:", selectedIndexes.length, "items selected");
-              if (selectedIndexes.length > 0) {
-                const firstObject = selectedIndexes[0].data(ArrangerObjectListModel.ArrangerObjectPtrRole) as ArrangerObject;
-                console.log("first selected object:", firstObject);
-              }
-
               if (deselected.length > 0) {
                 deselected.forEach(deselectedRange => {
                   const arrangerObject = getObjectFromUnifiedIndex(deselectedRange.topLeft);
                   if (ArrangerObjectHelper.isClip(arrangerObject)) {
-                    console.log("previous clip changed, unsetting clip editor clip");
                     root.session.uiState.clipEditor.unsetClip();
                   }
                 });

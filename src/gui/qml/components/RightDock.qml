@@ -81,27 +81,5 @@ ColumnLayout {
 
       trackCollection: root.project.tracklist.collection
     }
-
-    Repeater {
-      model: 1
-
-      Rectangle {
-        id: rect
-
-        required property int index
-
-        border.color: "black"
-        border.width: 2
-        color: Qt.rgba(Math.random(), Math.random(), Math.random(), 1)
-        height: 50
-        width: 180
-
-        Text {
-          anchors.centerIn: parent
-          font.pixelSize: 16
-          text: "Item " + (rect.index + 1)
-        }
-      }
-    }
   }
 }

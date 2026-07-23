@@ -183,14 +183,6 @@ GridLayout {
     }
 
     model: unifiedObjectsModel
-
-    onSelectionChanged: (selected, deselected) => {
-      console.log("Selection changed:", selectedIndexes.length, "items selected");
-      if (selectedIndexes.length > 0) {
-        const firstObject = selectedIndexes[0].data(ArrangerObjectListModel.ArrangerObjectPtrRole) as ArrangerObject;
-        console.log("first selected object:", firstObject);
-      }
-    }
   }
 
   MidiArranger {

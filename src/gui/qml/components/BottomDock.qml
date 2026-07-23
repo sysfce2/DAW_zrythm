@@ -74,26 +74,6 @@ ColumnLayout {
       chordPresetManager: root.chordPresetManager
       session: root.session
     }
-
-    Repeater {
-      model: 2
-
-      Rectangle {
-        required property int index
-
-        border.color: "black"
-        border.width: 2
-        color: Qt.rgba(Math.random(), Math.random(), Math.random(), 1)
-        height: 50
-        width: 180
-
-        Text {
-          anchors.centerIn: parent
-          font.pixelSize: 16
-          text: "Item " + (parent.index + 1)
-        }
-      }
-    }
   }
 
   TabBar {

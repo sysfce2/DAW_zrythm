@@ -131,7 +131,6 @@ ApplicationWindow {
 
         // Select next track, or prev track if next doesn't exist
         let indexToSelect = first;
-        console.log(first, indexToSelect);
         if (numTracks === first) {
           --indexToSelect;
         }
@@ -178,17 +177,7 @@ ApplicationWindow {
         selectSingleTrack(trackModelIndex);
       }
     }
-    onCurrentChanged: (current, previous) => {
-      if (current) {
-        const track = getTrackFromModelIndex(current);
-        if (track) {
-          console.log("current track changed", track.name);
-        }
-      }
-    }
     onSelectionChanged: (selected, deselected) => {
-      console.log("Selection changed:", selectedIndexes.length, "items selected");
-
       if (root.appSettings.trackAutoArm) {
         // Disarm all previously auto-armed tracks first
         automaticallyArmedTracks.forEach((value, track) => {
@@ -198,9 +187,6 @@ ApplicationWindow {
       }
 
       if (selectedIndexes.length > 0) {
-        const firstTrack = selectedIndexes[0].data(TrackCollection.TrackPtrRole) as Track;
-        console.log("first selected object:", firstTrack.name);
-
         selected.forEach(selectedRange => {
           for (let i = selectedRange.topLeft; i <= selectedRange.bottomRight; i++) {
             const track = getTrackFromModelIndex(i);
