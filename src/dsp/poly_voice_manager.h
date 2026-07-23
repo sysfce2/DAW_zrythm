@@ -17,8 +17,9 @@ namespace zrythm::dsp
 /**
  * @brief Owns and drives a set of polyphonic synthesizer voices.
  *
- * Dispatches MIDI events (note on/off, pitch wheel) to voices with
- * sample-accurate timing and renders the active voices between events.
+ * Dispatches MIDI events (note on/off, pitch wheel, all-sound-off and
+ * all-notes-off CCs) to voices with sample-accurate timing and renders the
+ * active voices between events.
  * Voice allocation picks the first free voice, stealing the oldest active
  * voice when all are busy.
  *

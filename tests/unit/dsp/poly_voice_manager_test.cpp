@@ -241,4 +241,53 @@ TEST_F (PolyVoiceManagerTest, AllNotesOffDeactivatesImmediately)
   EXPECT_EQ (v1->cut_count_, 1);
 }
 
+TEST_F (PolyVoiceManagerTest, AllNotesOffCcReleasesChannelVoices)
+{
+  auto * v0 = add_mock_voice ();
+  auto * v1 = add_mock_voice ();
+
+  auto buf = make_buffer ();
+  push_event (buf, midi_event::make_note_on (0, 60, 100, units::samples (0u)));
+  push_event (buf, midi_event::make_note_on (1, 62, 100, units::samples (1u)));
+  manager_.process (output_, buf, units::samples (0u), units::samples (256u));
+  ASSERT_TRUE (v0->is_active ());
+  ASSERT_TRUE (v1->is_active ());
+
+  // CC 123 on channel 0 releases only the channel-0 voice
+  auto buf2 = make_buffer ();
+  push_event (buf2, midi_event::make_all_notes_off (0, units::samples (0u)));
+  manager_.process (output_, buf2, units::samples (0u), units::samples (256u));
+
+  EXPECT_EQ (v0->note_off_count_, 1);
+  EXPECT_EQ (v0->cut_count_, 0);
+  // Tail-off is the voice's choice: the mock stays active after note_off
+  EXPECT_TRUE (v0->is_active ());
+  EXPECT_EQ (v1->note_off_count_, 0);
+  EXPECT_TRUE (v1->is_active ());
+}
+
+TEST_F (PolyVoiceManagerTest, AllSoundOffCcCutsChannelVoices)
+{
+  auto * v0 = add_mock_voice ();
+  auto * v1 = add_mock_voice ();
+
+  auto buf = make_buffer ();
+  push_event (buf, midi_event::make_note_on (0, 60, 100, units::samples (0u)));
+  push_event (buf, midi_event::make_note_on (1, 62, 100, units::samples (1u)));
+  manager_.process (output_, buf, units::samples (0u), units::samples (256u));
+  ASSERT_TRUE (v0->is_active ());
+  ASSERT_TRUE (v1->is_active ());
+
+  // CC 120 on channel 0 cuts only the channel-0 voice
+  auto                             buf2 = make_buffer ();
+  const std::array<midi_byte_t, 3> all_sound_off = { 0xb0, 120, 0 };
+  buf2.push_back (units::samples (0u), all_sound_off);
+  manager_.process (output_, buf2, units::samples (0u), units::samples (256u));
+
+  EXPECT_EQ (v0->cut_count_, 1);
+  EXPECT_FALSE (v0->is_active ());
+  EXPECT_EQ (v1->cut_count_, 0);
+  EXPECT_TRUE (v1->is_active ());
+}
+
 } // namespace zrythm::dsp

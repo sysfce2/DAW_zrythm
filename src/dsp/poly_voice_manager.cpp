@@ -65,11 +65,11 @@ void
 PolyVoiceManager::dispatch_event (std::span<const midi_byte_t> data) noexcept
 {
   // Validate size against the status byte: this lets through only well-formed
-  // messages of the relevant types (note on/off/pitch wheel are 3 bytes each)
-  // and silently skips shorter messages that don't apply to voice allocation
-  // (program change, channel pressure, active sensing, etc.). Future CC
-  // support would slot in as another else-if branch with the same length
-  // check.
+  // messages of the relevant types (note on/off/pitch wheel/control change
+  // are 3 bytes each) and silently skips shorter messages that don't apply
+  // to voice allocation (program change, channel pressure, active sensing,
+  // etc.). Further CC support would slot in as another else-if branch with
+  // the same length check.
   if (data.empty ())
     return;
   const auto expected_len = utils::midi::midi_get_msg_length (data[0]);
@@ -95,6 +95,24 @@ PolyVoiceManager::dispatch_event (std::span<const midi_byte_t> data) noexcept
       last_pitch_bend_[channel] = value;
       for (auto &voice : voices_)
         voice->pitch_bend (value);
+    }
+  else if (utils::midi::midi_is_all_sound_off (data))
+    {
+      // CC 120: silence immediately (no release tail)
+      for (auto &voice : voices_)
+        {
+          if (voice->is_active () && voice->current_channel () == channel)
+            voice->cut ();
+        }
+    }
+  else if (utils::midi::midi_is_all_notes_off (data))
+    {
+      // CC 123: release all notes on the channel (envelopes still tail off)
+      for (auto &voice : voices_)
+        {
+          if (voice->is_active () && voice->current_channel () == channel)
+            voice->note_off ();
+        }
     }
 }
 
