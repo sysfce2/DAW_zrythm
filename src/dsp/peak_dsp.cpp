@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2020, 2022, 2024 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2020, 2022, 2024, 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 /*
  * This file incorporates work covered by the following copyright and
@@ -43,7 +43,7 @@ namespace zrythm::dsp
  * @param n Number of samples.
  */
 void
-PeakDsp::process (float * p, int n)
+PeakDsp::process (const float * p, int n)
 {
   float s = 0.f, t;
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2020-2021, 2024 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2020-2021, 2024, 2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 /*
  * This file incorporates work covered by the following copyright and
@@ -55,7 +55,7 @@ public:
    * @param p Array of samples
    * @param n Number of samples
    */
-  [[gnu::hot]] void process (float * p, int n);
+  [[gnu::hot]] void process (const float * p, int n);
 
   float read_f ();
 
