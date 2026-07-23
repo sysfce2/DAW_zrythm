@@ -317,6 +317,12 @@ ClapPlugin::on_configuration_changed (
   Q_EMIT instantiationFinished (success, {});
 }
 
+bool
+ClapPlugin::hasNativeUi () const
+{
+  return pimpl_->plugin_ != nullptr && pimpl_->plugin_->canUseGui ();
+}
+
 void
 ClapPlugin::on_ui_visibility_changed ()
 {
@@ -1066,6 +1072,13 @@ ClapPlugin::load_plugin (
 
   Q_EMIT pluginLoadedChanged (true);
 
+  Q_EMIT hasNativeUiChanged ();
+  // If the UI was requested while the plugin was loading, show the editor now
+  if (uiVisible ())
+    {
+      on_ui_visibility_changed ();
+    }
+
   return true;
 }
 
@@ -1078,6 +1091,7 @@ ClapPlugin::unload_current_plugin ()
   zrythm_to_clap_.clear ();
 
   Q_EMIT pluginLoadedChanged (false);
+  Q_EMIT hasNativeUiChanged ();
 
   if (!pimpl_->library_.is_loaded ())
     return;

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include <utility>
@@ -81,6 +81,12 @@ JucePlugin::on_configuration_changed (
     }
 
   initialize_juce_plugin_async (generateNewPluginPortsAndParams);
+}
+
+bool
+JucePlugin::hasNativeUi () const
+{
+  return juce_plugin_ != nullptr && juce_plugin_->hasEditor ();
 }
 
 void
@@ -194,6 +200,13 @@ JucePlugin::initialize_juce_plugin_async (bool generateNewPluginPortsAndParams)
 
           z_info ("Successfully loaded JUCE plugin: {}", get_name ());
           Q_EMIT instantiationFinished (true, {});
+          Q_EMIT hasNativeUiChanged ();
+          // If the UI was requested while instantiation was in progress,
+          // show the editor now
+          if (uiVisible ())
+            {
+              on_ui_visibility_changed ();
+            }
         }
       catch (const std::exception &e)
         {
@@ -612,17 +625,12 @@ JucePlugin::show_editor ()
   if (!juce_plugin_ || editor_visible_)
     return;
 
+  if (!juce_plugin_->hasEditor ())
+    return;
+
   z_debug ("creating editor for {}", get_name ());
-  if (juce_plugin_->hasEditor ())
-    {
-      editor_ = std::unique_ptr<juce::AudioProcessorEditor> (
-        juce_plugin_->createEditorAndMakeActive ());
-    }
-  else
-    {
-      editor_ =
-        std::make_unique<juce::GenericAudioProcessorEditor> (*juce_plugin_);
-    }
+  editor_ = std::unique_ptr<juce::AudioProcessorEditor> (
+    juce_plugin_->createEditorAndMakeActive ());
 
   if (editor_)
     {

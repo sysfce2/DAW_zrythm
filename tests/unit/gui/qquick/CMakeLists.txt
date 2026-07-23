@@ -4,6 +4,7 @@
 add_executable(zrythm_gui_qquick_unit_tests
   chord_clip_canvas_test.cpp
   chord_row_list_model_test.cpp
+  generic_plugin_ui_controller_test.cpp
   timeline_position_tracker_test.cpp
   waveform_peak_computation_test.cpp
 )

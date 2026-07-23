@@ -327,4 +327,10 @@ TEST_F (FaustPluginTest, ParamMappingSurvivesDeserialization)
   plugin2->release_resources ();
 }
 
+TEST_F (FaustPluginTest, HasNativeUiIsFalse)
+{
+  load_faust_plugin (u8"zrythm.faust.lowpass_filter");
+  EXPECT_FALSE (plugin_->hasNativeUi ());
+}
+
 } // namespace zrythm::plugins

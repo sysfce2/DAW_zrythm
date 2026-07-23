@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include <algorithm>
@@ -412,6 +412,59 @@ TEST_F (JucePluginTest, StateSavingLoading)
   // Deserialize - this should decode the base64 state and call
   // setStateInformation
   from_json (json, *deserialized_plugin);
+}
+
+TEST_F (JucePluginTest, HasNativeUiFalseBeforeInstantiation)
+{
+  createTestConfiguration ();
+  setupMockPlugin ();
+  setupJucePlugin (true);
+
+  EXPECT_FALSE (plugin_->hasNativeUi ());
+
+  // Complete instantiation so the mock's expectations are satisfied
+  plugin_->set_configuration (*config_);
+}
+
+TEST_F (JucePluginTest, HasNativeUiReflectsEditorAvailability)
+{
+  createTestConfiguration ();
+  setupMockPlugin ();
+  EXPECT_CALL (*mock_plugin_, hasEditor ())
+    .WillRepeatedly (::testing::Return (true));
+  setupJucePlugin (true);
+  plugin_->set_configuration (*config_);
+
+  EXPECT_TRUE (plugin_->hasNativeUi ());
+}
+
+TEST_F (JucePluginTest, ShowEditorDoesNothingForEditorlessPlugin)
+{
+  createTestConfiguration ();
+  setupMockPlugin ();
+  EXPECT_CALL (*mock_plugin_, hasEditor ())
+    .WillRepeatedly (::testing::Return (false));
+  EXPECT_CALL (*mock_plugin_, createEditor ()).Times (0);
+
+  // Count top-level window provider invocations (must stay 0)
+  int window_provider_calls = 0;
+  plugin_ = std::make_unique<JucePlugin> (
+    *registry_,
+    [this] (
+      const juce::PluginDescription &, double, int,
+      std::function<void (
+        std::unique_ptr<juce::AudioPluginInstance>, const juce::String &)>
+        callback) { callback (std::move (mock_plugin_), ""); },
+    [this] () { return sample_rate_; }, [this] () { return buffer_size_; },
+    [&window_provider_calls] (Plugin &) {
+      ++window_provider_calls;
+      return std::make_unique<MockTopLevelWindow> ();
+    });
+
+  plugin_->set_configuration (*config_);
+  plugin_->setUiVisible (true);
+
+  EXPECT_EQ (window_provider_calls, 0);
 }
 
 TEST_F (JucePluginTest, EditorManagement)

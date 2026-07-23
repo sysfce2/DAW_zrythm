@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include "plugins/internal_plugin_base.h"
@@ -16,11 +16,6 @@ InternalPluginBase::InternalPluginBase (
   connect (
     this, &Plugin::configurationChanged, this,
     &InternalPluginBase::on_configuration_changed);
-
-  // Connect to UI visibility changes
-  connect (
-    this, &Plugin::uiVisibleChanged, this,
-    &InternalPluginBase::on_ui_visibility_changed);
 
   auto bypass_ref = generate_default_bypass_param ();
   add_parameter (bypass_ref);
@@ -40,12 +35,6 @@ InternalPluginBase::on_configuration_changed (
   // Reinitialize plugin with new configuration
 
   Q_EMIT instantiationFinished (true, {});
-}
-
-void
-InternalPluginBase::on_ui_visibility_changed ()
-{
-  // TODO
 }
 
 void

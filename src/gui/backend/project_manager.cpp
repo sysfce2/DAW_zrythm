@@ -12,6 +12,8 @@
 #include "gui/backend/project_manager.h"
 #include "gui/backend/project_session.h"
 #include "gui/backend/zrythm_application.h"
+#include "structure/tracks/track.h"
+#include "structure/tracks/tracklist.h"
 #include "utils/directory_manager.h"
 #include "utils/io_utils.h"
 
@@ -389,6 +391,22 @@ ProjectManager::loadProject (const QString &filepath)
 
               // Set as active project
               setActiveSession (session);
+
+              // Re-attach generic UI tracking for all deserialized plugins in
+              // the project's tracks (restores generic windows for plugins
+              // saved with visible UI)
+              for (
+                const auto &tr_ref :
+                session->project ()->tracklist ()->collection ()->tracks ())
+                {
+                  std::vector<plugins::PluginUuidReference> plugins;
+                  tr_ref.get ()->collect_plugins (plugins);
+                  for (const auto &pl_ref : plugins)
+                    {
+                      session->genericPluginUiController ()
+                        ->trackPluginUiVisibility (pl_ref.get ());
+                    }
+                }
 
               promise.setProgressValueAndText (
                 kStage4End, tr ("Rebuilding audio graph..."));

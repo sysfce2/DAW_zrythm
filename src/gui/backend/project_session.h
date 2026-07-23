@@ -14,6 +14,7 @@
 #include "controllers/recording_coordinator.h"
 #include "controllers/recording_materializer.h"
 #include "controllers/transport_controller.h"
+#include "gui/qquick/generic_plugin_ui_controller.h"
 #include "gui/qquick/qfuture_qml_wrapper.h"
 #include "structure/project/project.h"
 #include "structure/project/project_ui_state.h"
@@ -65,6 +66,9 @@ class ProjectSession : public QObject
     zrythm::actions::PluginOperator * pluginOperator READ pluginOperator
       CONSTANT FINAL)
   Q_PROPERTY (
+    zrythm::gui::qquick::GenericPluginUiController * genericPluginUiController
+      READ genericPluginUiController CONSTANT FINAL)
+  Q_PROPERTY (
     zrythm::actions::FileImporter * fileImporter READ fileImporter CONSTANT FINAL)
   Q_PROPERTY (
     zrythm::actions::UuidPropertyOperator * uuidPropertyOperator READ
@@ -97,6 +101,7 @@ public:
   zrythm::actions::TrackCreator *          trackCreator () const;
   actions::PluginImporter *                pluginImporter () const;
   actions::PluginOperator *                pluginOperator () const;
+  qquick::GenericPluginUiController *      genericPluginUiController () const;
   actions::FileImporter *                  fileImporter () const;
   actions::UuidPropertyOperator *          uuidPropertyOperator () const;
   controllers::TransportController *       transportController () const;
@@ -173,9 +178,11 @@ private:
 
   // Action handlers for user operations
   utils::QObjectUniquePtr<actions::ArrangerObjectCreator>
-                                                   arranger_object_creator_;
-  utils::QObjectUniquePtr<actions::ClipOperator>   clip_operator_;
-  utils::QObjectUniquePtr<actions::TrackCreator>   track_creator_;
+                                                 arranger_object_creator_;
+  utils::QObjectUniquePtr<actions::ClipOperator> clip_operator_;
+  utils::QObjectUniquePtr<actions::TrackCreator> track_creator_;
+  utils::QObjectUniquePtr<qquick::GenericPluginUiController>
+    generic_plugin_ui_controller_;
   utils::QObjectUniquePtr<actions::PluginImporter> plugin_importer_;
   utils::QObjectUniquePtr<actions::PluginOperator> plugin_operator_;
   utils::QObjectUniquePtr<actions::FileImporter>   file_importer_;

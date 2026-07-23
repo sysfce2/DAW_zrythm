@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+# SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 # SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 target_sources(zrythm_gui_lib
@@ -19,6 +19,7 @@ target_sources(zrythm_gui_lib
       clip_canvas_item_base.h
       fade_overlay_canvas_item.h
       fade_overlay_canvas_renderer.h
+      generic_plugin_ui_controller.h
       grid_line_computer.h
       live_waveform_canvas_item.h
       meter_processor.h
@@ -50,6 +51,7 @@ target_sources(zrythm_gui_lib
     chord_suggestion_provider.cpp
     fade_overlay_canvas_item.cpp
     fade_overlay_canvas_renderer.cpp
+    generic_plugin_ui_controller.cpp
     grid_line_computer.cpp
     live_waveform_canvas_item.cpp
     meter_processor.cpp

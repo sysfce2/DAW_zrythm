@@ -132,6 +132,12 @@ TEST_P (ClapPluginTest, NoteOnProducesAudio)
     << "Plugin produced silent output for note-on (dialect mismatch?)";
 }
 
+TEST_P (ClapPluginTest, HasNativeUiIsFalseForGuiLessPlugins)
+{
+  load_test_plugin (GetParam ());
+  EXPECT_FALSE (plugin_->hasNativeUi ());
+}
+
 INSTANTIATE_TEST_SUITE_P (
   NoteDialects,
   ClapPluginTest,

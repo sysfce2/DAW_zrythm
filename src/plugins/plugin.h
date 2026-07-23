@@ -56,6 +56,7 @@ class Plugin : public utils::UuidIdentifiableObject<Plugin>, public dsp::Process
     zrythm::dsp::ProcessorParameter * gainParameter READ gainParameter CONSTANT)
   Q_PROPERTY (
     bool uiVisible READ uiVisible WRITE setUiVisible NOTIFY uiVisibleChanged)
+  Q_PROPERTY (bool hasNativeUi READ hasNativeUi NOTIFY hasNativeUiChanged)
   Q_PROPERTY (
     InstantiationStatus instantiationStatus READ instantiationStatus NOTIFY
       instantiationStatusChanged)
@@ -141,6 +142,20 @@ public:
    * accordingly.
    */
   Q_SIGNAL void uiVisibleChanged (bool visible);
+
+  /**
+   * @brief Whether the plugin provides its own native editor UI.
+   *
+   * When false, a generic parameter UI is shown instead when @ref uiVisible
+   * is set.
+   */
+  virtual bool hasNativeUi () const { return false; }
+
+  /**
+   * @brief Emitted by implementations when @ref hasNativeUi may have changed
+   * (e.g., after asynchronous instantiation completes).
+   */
+  Q_SIGNAL void hasNativeUiChanged ();
 
   InstantiationStatus instantiationStatus () const
   {

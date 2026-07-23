@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2025 Alexandros Theodotou <alex@zrythm.org>
+// SPDX-FileCopyrightText: © 2025-2026 Alexandros Theodotou <alex@zrythm.org>
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #pragma once
@@ -49,12 +49,6 @@ protected Q_SLOTS:
   virtual void on_configuration_changed (
     PluginConfiguration * configuration,
     bool                  generateNewPluginPortsAndParams);
-
-private Q_SLOTS:
-  /**
-   * @brief Handle visibility changes.
-   */
-  void on_ui_visibility_changed ();
 };
 
 } // namespace zrythm::plugins

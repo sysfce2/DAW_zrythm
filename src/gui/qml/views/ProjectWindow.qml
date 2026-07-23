@@ -292,6 +292,26 @@ ApplicationWindow {
     session: root.session
   }
 
+  // Generic editor windows for plugins without a native UI
+  Instantiator {
+    id: genericPluginWindows
+
+    model: root.session.genericPluginUiController
+
+    delegate: GenericPluginEditorWindow {
+    }
+
+    onObjectAdded: (index, object) => {
+      object.plugin = genericPluginWindows.model.pluginAt(index);
+      // Set the transient parent before the window is shown so the WM keeps
+      // it stacked above the project window (must happen pre-mapping on
+      // Wayland), and inherit the palette (not propagated across windows)
+      object.transientParent = root;
+      object.palette = Qt.binding(() => root.palette);
+      object.visible = true;
+    }
+  }
+
   ColumnLayout {
     anchors.fill: parent
     spacing: 0

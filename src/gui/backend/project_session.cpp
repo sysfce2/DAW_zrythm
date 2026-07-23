@@ -57,14 +57,19 @@ ProjectSession::ProjectSession (
           *project_->tracklist ()->trackRouting (),
           *project_->tracklist ()->singletonTracks (),
           this)),
+      generic_plugin_ui_controller_ (
+        utils::make_qobject_unique<qquick::GenericPluginUiController> (this)),
       plugin_importer_ (
         utils::make_qobject_unique<actions::PluginImporter> (
           *undo_stack_,
           *project_->plugin_factory_,
           *track_creator_,
-          [] (plugins::PluginUuidReference plugin_ref) {
+          [controller = generic_plugin_ui_controller_.get ()] (
+            plugins::PluginUuidReference plugin_ref) {
             z_debug ("Plugin instantiation completed");
-            plugin_ref.get ()->setUiVisible (true);
+            auto * pl = plugin_ref.get ();
+            controller->trackPluginUiVisibility (pl);
+            pl->setUiVisible (true);
           },
           this)),
       plugin_operator_ (
@@ -462,6 +467,12 @@ actions::PluginOperator *
 ProjectSession::pluginOperator () const
 {
   return plugin_operator_.get ();
+}
+
+qquick::GenericPluginUiController *
+ProjectSession::genericPluginUiController () const
+{
+  return generic_plugin_ui_controller_.get ();
 }
 
 actions::FileImporter *

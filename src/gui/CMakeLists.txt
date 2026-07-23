@@ -246,6 +246,7 @@ set(rel_qml_file_paths
   components/FaderButtons.qml
   components/FaderControl.qml
   components/FileBrowserPage.qml
+  components/GenericPluginEditorWindow.qml
   components/LeftDock.qml
   components/MainMenuBar.qml
   components/Meter.qml
@@ -255,6 +256,7 @@ set(rel_qml_file_paths
   components/PlayheadTriangle.qml
   components/PluginBrowserPage.qml
   components/PluginInspectorPage.qml
+  components/PluginParameterListView.qml
   components/PluginSelectionModel.qml
   components/PluginSlotList.qml
   components/PluginSlotView.qml
