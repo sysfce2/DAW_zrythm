@@ -102,6 +102,17 @@ public:
   float         peakAmplitude () const;
   Q_SIGNAL void peakAmplitudeChanged (float value);
 
+  /**
+   * @brief Performs a single meter update.
+   *
+   * Reads the port observation cache, applies the meter algorithm and
+   * falloff, and updates @ref currentAmplitude and @ref peakAmplitude,
+   * emitting the corresponding change signals if the values changed.
+   *
+   * Called by an internal timer while a port is set.
+   */
+  void processValues ();
+
   Q_INVOKABLE float toDBFS (float amp) const;
   Q_INVOKABLE float toFader (float amp) const;
 

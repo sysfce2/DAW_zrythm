@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-ZrythmLicense
 
 #include <algorithm>
+#include <utility>
 
 #include "dsp/kmeter_dsp.h"
 #include "dsp/midi_event.h"
@@ -205,23 +206,29 @@ MeterProcessor::setPort (dsp::Port * port)
 
       impl_->timer_ = utils::make_qobject_unique<QTimer> (this);
       impl_->timer_->setInterval (1000 / 60);
-      connect (impl_->timer_.get (), &QTimer::timeout, this, [&] () {
-        float val = 0.0;
-        float max = 0.0;
-        get_value (AudioValueFormat::Amplitude, val, max);
-
-        if (!utils::math::floats_equal (impl_->current_amp_, val))
-          {
-            impl_->current_amp_ = val;
-            Q_EMIT currentAmplitudeChanged (val);
-          }
-        if (!utils::math::floats_equal (impl_->peak_amp_, max))
-          {
-            impl_->peak_amp_ = max;
-            Q_EMIT peakAmplitudeChanged (max);
-          }
-      });
+      connect (
+        impl_->timer_.get (), &QTimer::timeout, this,
+        &MeterProcessor::processValues);
       impl_->timer_->start ();
+    }
+}
+
+void
+MeterProcessor::processValues ()
+{
+  float val = 0.0;
+  float max = 0.0;
+  get_value (AudioValueFormat::Amplitude, val, max);
+
+  if (!utils::math::floats_equal (impl_->current_amp_, val))
+    {
+      impl_->current_amp_ = val;
+      Q_EMIT currentAmplitudeChanged (val);
+    }
+  if (!utils::math::floats_equal (impl_->peak_amp_, max))
+    {
+      impl_->peak_amp_ = max;
+      Q_EMIT peakAmplitudeChanged (max);
     }
 }
 
@@ -262,8 +269,19 @@ MeterProcessor::get_value (AudioValueFormat format, float &val, float &max)
 
   if (impl_->port_->is_audio ())
     {
-      auto &channel_data = cache.audio[impl_->channel_];
-      if (!channel_data.empty ())
+      // The cache only gains channels once the graph prepares the observer,
+      // so the requested channel may not exist yet
+      const bool channel_available =
+        impl_->channel_ >= 0
+        && std::cmp_less (impl_->channel_, cache.audio.size ());
+      if (!channel_available)
+        {
+          amp = 0.f;
+          max_amp = 0.f;
+        }
+      else if (
+        auto &channel_data = cache.audio[static_cast<size_t> (impl_->channel_)];
+        !channel_data.empty ())
         {
           auto   buf_sz = static_cast<int> (channel_data.size ());
           auto * buf = channel_data.data ();
@@ -298,10 +316,10 @@ MeterProcessor::get_value (AudioValueFormat format, float &val, float &max)
     }
   else if (impl_->port_->is_cv ())
     {
-      auto &channel_data = cache.audio[0];
-      if (!channel_data.empty ())
+      if (!cache.audio.empty () && !cache.audio[0].empty ())
         {
-          auto buf_sz = static_cast<int> (channel_data.size ());
+          auto &channel_data = cache.audio[0];
+          auto  buf_sz = static_cast<int> (channel_data.size ());
           impl_->peak_processor_->process (channel_data.data (), buf_sz);
           std::tie (amp, max_amp) = impl_->peak_processor_->read ();
           cache.clear_audio ();
